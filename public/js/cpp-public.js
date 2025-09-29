@@ -20,7 +20,8 @@
             $(document).on('submit', '#cpp-giftcode-form', this.handleGiftCodeSubmission);
             
             // Video player initialization
-            $(document).on('click', '.cpp-video-play', this.initVideoPlayer);
+            // Ensure a valid function reference is bound; use object method explicitly
+            $(document).on('click', '.cpp-video-play', CPP_Public.initVideoPlayer);
             
             // Auto-submit on enter
             $(document).on('keypress', '.cpp-giftcode input', function(e) {
@@ -28,6 +29,44 @@
                     $(this).closest('form').submit();
                 }
             });
+        },
+
+        // Click handler to initialize a specific video player on demand
+        initVideoPlayer: function(e) {
+            if (e && typeof e.preventDefault === 'function') {
+                e.preventDefault();
+            }
+
+            var $trigger = $(this);
+            // Support buttons/links with data-video-id or nested inside containers
+            var videoId = $trigger.data('video-id');
+            var $container = $trigger.closest('.cpp-video-container, .cpp-video-player');
+
+            if (!videoId && $container.length) {
+                videoId = $container.data('video-id');
+            }
+
+            if (!$container.length) {
+                // As a fallback, try to locate by id pattern
+                var idMatch = ($trigger.attr('href') || '').match(/cpp-video-(\w+)/);
+                if (idMatch && idMatch[1]) {
+                    videoId = videoId || idMatch[1];
+                    $container = $('#cpp-video-' + idMatch[1]).closest('.cpp-video-container, .cpp-video-player');
+                }
+            }
+
+            if (!$container.length || !videoId) {
+                if (window.console && console.warn) {
+                    console.warn('[CPP] Unable to initialize video player: missing container or videoId');
+                }
+                return;
+            }
+
+            // If there is an overlay/access form, hide it and show the player area
+            $container.find('.cpp-video-access-form, .cpp-access-overlay').hide();
+            $container.find('.cpp-video-player-container').show();
+
+            CPP_Public.loadVideoPlayer($container, videoId);
         },
 
         handleGiftCodeSubmission: function(e) {
@@ -92,21 +131,29 @@
         },
 
         initVideoPlayers: function() {
+            // Initialize players rendered via [cpp_protected_video] (already validated server-side)
             $('.cpp-video-container').each(function() {
                 var $container = $(this);
                 var videoId = $container.data('video-id');
-                
                 if (!videoId) return;
-                
                 CPP_Public.loadVideoPlayer($container, videoId);
             });
         },
 
         loadVideoPlayer: function($container, videoId) {
             var $player = $container.find('[id^="cpp-video-"]');
-            
-            // Show loading
-            $player.html('<div class="cpp-video-overlay"><span class="cpp-loading-spinner"></span> Loading video...</div>');
+            if (!$player.length) {
+                // Fallback to generic player container used by protection manager
+                $player = $container.find('.cpp-video-player-container');
+            }
+            if (!$player.length) {
+                // Last resort: treat container itself as player area
+                $player = $container;
+            }
+
+            // Show loading (use localized string if available)
+            var loadingText = (window.cpp_public_ajax && cpp_public_ajax.strings && cpp_public_ajax.strings.loading) ? cpp_public_ajax.strings.loading : 'Loading...';
+            $player.html('<div class="cpp-video-overlay"><span class="cpp-loading-spinner"></span> ' + loadingText + '</div>');
             
             $.ajax({
                 url: cpp_public_ajax.ajax_url,

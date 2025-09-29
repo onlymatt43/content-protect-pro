@@ -149,6 +149,10 @@ class Content_Protect_Pro {
         
         $this->loader->add_action('wp_ajax_cpp_get_video_token', $plugin_public, 'get_video_token');
         $this->loader->add_action('wp_ajax_nopriv_cpp_get_video_token', $plugin_public, 'get_video_token');
+
+        // Video analytics tracking
+        $this->loader->add_action('wp_ajax_cpp_track_video_event', $plugin_public, 'track_video_event');
+        $this->loader->add_action('wp_ajax_nopriv_cpp_track_video_event', $plugin_public, 'track_video_event');
     }
 
     /**

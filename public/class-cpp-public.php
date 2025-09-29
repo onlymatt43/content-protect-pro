@@ -288,4 +288,36 @@ class CPP_Public {
             wp_send_json_error(array('message' => __('Unable to generate video access token.', 'content-protect-pro')));
         }
     }
+
+    /**
+     * AJAX handler for tracking video events
+     *
+     * @since 1.0.0
+     */
+    public function track_video_event() {
+        check_ajax_referer('cpp_public_nonce', 'nonce');
+
+        $event_type = isset($_POST['event_type']) ? sanitize_text_field($_POST['event_type']) : '';
+        $video_id   = isset($_POST['video_id']) ? sanitize_text_field($_POST['video_id']) : '';
+
+        if (empty($event_type) || empty($video_id)) {
+            wp_send_json_error(array('message' => __('Missing event parameters.', 'content-protect-pro')));
+        }
+
+        if (!class_exists('CPP_Analytics')) {
+            wp_send_json_success(array('message' => 'Analytics disabled'));
+        }
+
+        $analytics = new CPP_Analytics();
+        $logged = $analytics->log_event($event_type, 'video', $video_id, array(
+            'referrer' => isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : '',
+        ));
+
+        if ($logged) {
+            wp_send_json_success(array('message' => 'ok'));
+        } else {
+            // Still return success to avoid client retries/noise if analytics disabled
+            wp_send_json_success(array('message' => 'noop'));
+        }
+    }
 }
