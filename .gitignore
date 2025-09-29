@@ -1,0 +1,63 @@
+# WordPress Plugin .gitignore
+# Core WordPress files
+wp-admin/
+wp-content/
+wp-includes/
+index.php
+wp-*.php
+xmlrpc.php
+wp-config.php
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js (if using build tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Composer
+vendor/
+
+# Test files and temporary files
+test-*.php
+diagnostic*.php
+*.tmp
+*.bak
+*.log
+
+# Local development
+local-config.php
+wp-config-local.php
+
+# Build files
+dist/
+build/
+
+# Package files
+*.zip
+*.tar.gz
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Cache files
+.cache/
+*.cache
