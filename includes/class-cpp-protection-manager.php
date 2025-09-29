@@ -61,7 +61,7 @@ class CPP_Protection_Manager {
             ));
         }
 
-        // Validate gift code first
+    // Validate gift code first
         $giftcode_manager = new CPP_Giftcode_Manager();
         $validation = $giftcode_manager->validate_code($gift_code);
         
@@ -71,8 +71,8 @@ class CPP_Protection_Manager {
             ));
         }
 
-        // Check video access permissions
-        $access = $this->check_video_access($video_id, $gift_code, $validation['data']);
+    // Check video access permissions (pass full validation result for minutes/session)
+    $access = $this->check_video_access($video_id, $gift_code, $validation);
         
         if ($access['allowed']) {
             // Generate access token
@@ -119,23 +119,17 @@ class CPP_Protection_Manager {
             );
         }
 
-        // Check if gift code has required value for this video
-        if ($code_data['value'] < $video->required_value) {
+        // Current model: compare required minutes if set
+        $required_minutes = isset($video->required_minutes) ? intval($video->required_minutes) : 0;
+        $available_minutes = isset($code_data['access_duration_minutes']) ? intval($code_data['access_duration_minutes']) : 0;
+        if ($required_minutes > 0 && ($available_minutes === 0 || $available_minutes < $required_minutes)) {
             return array(
                 'allowed' => false,
                 'message' => sprintf(
-                    __('Gift code value (%s) is insufficient for this video (requires %s).', 'content-protect-pro'),
-                    $code_data['value'],
-                    $video->required_value
+                    __('Gift code provides %s minutes, but %s minutes are required for this video.', 'content-protect-pro'),
+                    $available_minutes,
+                    $required_minutes
                 )
-            );
-        }
-
-        // Check expiration
-        if ($video->expires_at && strtotime($video->expires_at) < time()) {
-            return array(
-                'allowed' => false,
-                'message' => __('Video access has expired.', 'content-protect-pro')
             );
         }
 
@@ -153,7 +147,7 @@ class CPP_Protection_Manager {
         return array(
             'allowed' => true,
             'video_url' => $video_url,
-            'expires' => $video->expires_at ? strtotime($video->expires_at) : (time() + (24 * HOUR_IN_SECONDS)),
+            'expires' => time() + (24 * 3600),
             'message' => __('Access granted.', 'content-protect-pro')
         );
     }
@@ -168,23 +162,26 @@ class CPP_Protection_Manager {
     public function get_protected_video_url($video) {
         $settings = get_option('cpp_integration_settings', array());
         
-        // Check for Bunny CDN integration
-        if (!empty($settings['bunny_enabled']) && !empty($video->bunny_video_id)) {
+        // Check for Bunny CDN integration (current schema)
+        if (!empty($settings['bunny_enabled']) && !empty($video->bunny_library_id)) {
+            if (!class_exists('CPP_Bunny_Integration')) {
+                require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+            }
             $bunny = new CPP_Bunny_Integration();
-            return $bunny->get_signed_url($video->bunny_video_id, array(
-                'expires' => time() + (2 * HOUR_IN_SECONDS), // 2 hour access
-                'ip' => $this->get_client_ip(),
-            ));
+            $signed = $bunny->generate_signed_url($video->video_id);
+            if ($signed) {
+                return $signed;
+            }
         }
         
-        // Check for Presto Player integration
-        if (!empty($settings['presto_enabled']) && !empty($video->presto_video_id)) {
-            // Return Presto player embed URL
-            return home_url("/presto-player/{$video->presto_video_id}/");
+        // Check for Presto Player integration (current schema)
+        if (!empty($settings['presto_enabled']) && !empty($video->presto_player_id)) {
+            // Return Presto player page (embed handled elsewhere)
+            return home_url("/presto-player/{$video->presto_player_id}/");
         }
         
         // Fallback to direct URL if available
-        return !empty($video->video_url) ? $video->video_url : '';
+        return !empty($video->direct_url) ? $video->direct_url : '';
     }
 
     /**
@@ -201,7 +198,7 @@ class CPP_Protection_Manager {
             'gift_code' => $gift_code,
             'ip' => $this->get_client_ip(),
             'issued_at' => time(),
-            'expires_at' => time() + (2 * HOUR_IN_SECONDS), // 2 hour token
+            'expires_at' => time() + (2 * 3600), // 2 hour token
         );
         
         // Simple JWT-like token (you might want to use a proper JWT library)
@@ -281,28 +278,20 @@ class CPP_Protection_Manager {
      */
     public function protected_content_shortcode($atts, $content = '') {
         $atts = shortcode_atts(array(
-            'required_value' => 0,
             'message' => __('Please enter a valid gift code to access this content.', 'content-protect-pro'),
         ), $atts);
         
-        // Check if user has already validated access
-    if (!session_id()) { session_start(); }
-    $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
-        
+        // Check if user has already validated access (session-based)
+        if (!session_id()) { session_start(); }
+        $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
         if (!empty($session_codes)) {
-            $giftcode_manager = new CPP_Giftcode_Manager();
-            foreach ($session_codes as $code) {
-                $validation = $giftcode_manager->validate_code($code);
-                if ($validation['valid'] && $validation['data']['value'] >= $atts['required_value']) {
-                    return do_shortcode($content);
-                }
-            }
+            return do_shortcode($content);
         }
         
         // Show access form
         ob_start();
         ?>
-        <div class="cpp-protected-content" data-required-value="<?php echo esc_attr($atts['required_value']); ?>">
+    <div class="cpp-protected-content">
             <div class="cpp-access-form">
                 <p><?php echo esc_html($atts['message']); ?></p>
                 <form class="cpp-giftcode-form">
@@ -329,7 +318,6 @@ class CPP_Protection_Manager {
     public function video_player_shortcode($atts) {
         $atts = shortcode_atts(array(
             'video_id' => '',
-            'required_value' => 0,
             'width' => '100%',
             'height' => '400px',
             'poster' => '',
@@ -342,9 +330,8 @@ class CPP_Protection_Manager {
         
         ob_start();
         ?>
-        <div class="cpp-video-player" 
-             data-video-id="<?php echo esc_attr($atts['video_id']); ?>"
-             data-required-value="<?php echo esc_attr($atts['required_value']); ?>">
+       <div class="cpp-video-player" 
+           data-video-id="<?php echo esc_attr($atts['video_id']); ?>">
             
             <div class="cpp-video-access-form">
                 <?php if (!empty($atts['poster'])): ?>
@@ -386,24 +373,15 @@ class CPP_Protection_Manager {
         }
         
         $is_protected = get_post_meta($post->ID, '_cpp_protected', true);
-        $required_value = get_post_meta($post->ID, '_cpp_required_value', true);
-        
         if (!$is_protected) {
             return $content;
         }
         
-        // Check if user has access
-    if (!session_id()) { session_start(); }
-    $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
-        
+        // Check if user has access (session-based)
+        if (!session_id()) { session_start(); }
+        $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
         if (!empty($session_codes)) {
-            $giftcode_manager = new CPP_Giftcode_Manager();
-            foreach ($session_codes as $code) {
-                $validation = $giftcode_manager->validate_code($code);
-                if ($validation['valid'] && $validation['data']['value'] >= $required_value) {
-                    return $content;
-                }
-            }
+            return $content;
         }
         
         // Replace content with access form
@@ -412,12 +390,7 @@ class CPP_Protection_Manager {
             $message = __('This content is protected. Please enter a valid gift code to access it.', 'content-protect-pro');
         }
         
-        return sprintf(
-            '[cpp_protected_content required_value="%d" message="%s"]%s[/cpp_protected_content]',
-            $required_value,
-            esc_attr($message),
-            $content
-        );
+        return sprintf('[cpp_protected_content message="%s"]%s[/cpp_protected_content]', esc_attr($message), $content);
     }
 
     /**

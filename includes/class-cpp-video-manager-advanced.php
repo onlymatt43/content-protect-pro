@@ -38,15 +38,14 @@ class CPP_Video_Manager_Advanced {
             ];
         }
         
-        // Delete from Bunny CDN if requested
+        // Delete from Bunny CDN if requested (uses Bunny video GUID in video_id)
         if ($delete_from_bunny && class_exists('CPP_Bunny_Integration')) {
             $bunny = new CPP_Bunny_Integration();
-            $bunny_result = $bunny->delete_video($video->bunny_video_id);
-            
-            if (!$bunny_result['success']) {
+            $deleted = $bunny->delete_video($video->video_id);
+            if (!$deleted) {
                 return [
                     'success' => false,
-                    'message' => 'Failed to delete from Bunny CDN: ' . $bunny_result['message']
+                    'message' => __('Failed to delete from Bunny CDN.', 'content-protect-pro')
                 ];
             }
         }
@@ -118,7 +117,8 @@ class CPP_Video_Manager_Advanced {
         $defaults = [
             'update_existing' => false,
             'skip_duplicates' => true,
-            'default_protection_level' => 'protected'
+            'default_required_minutes' => 60,
+            'default_integration' => 'bunny'
         ];
         
         $options = array_merge($defaults, $options);
@@ -134,7 +134,7 @@ class CPP_Video_Manager_Advanced {
         }
         
         $headers = fgetcsv($handle);
-        $required_headers = ['video_id', 'title'];
+    $required_headers = ['video_id', 'title'];
         $missing_headers = array_diff($required_headers, $headers);
         
         if (!empty($missing_headers)) {
@@ -195,20 +195,32 @@ class CPP_Video_Manager_Advanced {
                 }
             }
             
-            // Import new video
+            // Determine integration type from CSV columns
+            $integration_type = isset($video_data['integration_type']) ? sanitize_text_field($video_data['integration_type']) : $options['default_integration'];
+            $bunny_library_id = isset($video_data['bunny_library_id']) ? sanitize_text_field($video_data['bunny_library_id']) : '';
+            $presto_player_id = isset($video_data['presto_player_id']) ? sanitize_text_field($video_data['presto_player_id']) : '';
+            $direct_url = isset($video_data['direct_url']) ? esc_url_raw($video_data['direct_url']) : '';
+
+            if (empty($integration_type)) {
+                if (!empty($presto_player_id)) $integration_type = 'presto';
+                elseif (!empty($bunny_library_id)) $integration_type = 'bunny';
+                elseif (!empty($direct_url)) $integration_type = 'direct';
+                else $integration_type = 'bunny';
+            }
+
             $import_data = [
                 'video_id' => sanitize_text_field($video_data['video_id']),
                 'title' => sanitize_text_field($video_data['title']),
                 'description' => isset($video_data['description']) ? sanitize_textarea_field($video_data['description']) : '',
-                'protection_level' => isset($video_data['protection_level']) ? 
-                    sanitize_text_field($video_data['protection_level']) : 
-                    $options['default_protection_level'],
-                'bunny_video_id' => isset($video_data['bunny_video_id']) ? 
-                    sanitize_text_field($video_data['bunny_video_id']) : '',
-                'status' => isset($video_data['status']) ? 
-                    sanitize_text_field($video_data['status']) : 'active'
+                'required_minutes' => isset($video_data['required_minutes']) ? intval($video_data['required_minutes']) : intval($options['default_required_minutes']),
+                'integration_type' => $integration_type,
+                'bunny_library_id' => $bunny_library_id,
+                'presto_player_id' => $presto_player_id,
+                'direct_url' => $direct_url,
+                'status' => isset($video_data['status']) ? sanitize_text_field($video_data['status']) : 'active',
+                'created_at' => current_time('mysql')
             ];
-            
+
             $inserted = $wpdb->insert($table_name, $import_data);
             
             if ($inserted) {
@@ -275,7 +287,7 @@ class CPP_Video_Manager_Advanced {
         
         $where_sql = implode(' AND ', $where_conditions);
         
-        $query = "SELECT * FROM {$table_name} WHERE {$where_sql} ORDER BY created_at DESC";
+    $query = "SELECT * FROM {$table_name} WHERE {$where_sql} ORDER BY created_at DESC";
         
         if (!empty($values)) {
             $query = $wpdb->prepare($query, $values);
@@ -287,14 +299,17 @@ class CPP_Video_Manager_Advanced {
         $csv_output = '';
         
         if (!empty($results)) {
-            // Headers
-            $csv_output .= implode(',', array_keys($results[0])) . "\n";
+            // Headers (explicit, stable order)
+            $headers = ['id','video_id','title','required_minutes','integration_type','bunny_library_id','presto_player_id','direct_url','description','status','usage_count','max_uses','created_at','updated_at'];
+            $csv_output .= implode(',', $headers) . "\n";
             
             // Data rows
             foreach ($results as $row) {
+                $ordered = [];
+                foreach ($headers as $h) { $ordered[] = isset($row[$h]) ? $row[$h] : ''; }
                 $csv_output .= implode(',', array_map(function($value) {
-                    return '"' . str_replace('"', '""', $value) . '"';
-                }, $row)) . "\n";
+                    return '"' . str_replace('"', '""', (string) $value) . '"';
+                }, $ordered)) . "\n";
             }
         }
         
@@ -324,16 +339,25 @@ class CPP_Video_Manager_Advanced {
             $update_data['description'] = sanitize_textarea_field($data['description']);
         }
         
-        if (isset($data['protection_level'])) {
-            $update_data['protection_level'] = sanitize_text_field($data['protection_level']);
+        if (isset($data['required_minutes'])) {
+            $update_data['required_minutes'] = intval($data['required_minutes']);
         }
         
         if (isset($data['status'])) {
             $update_data['status'] = sanitize_text_field($data['status']);
         }
         
-        if (isset($data['bunny_video_id'])) {
-            $update_data['bunny_video_id'] = sanitize_text_field($data['bunny_video_id']);
+        if (isset($data['integration_type'])) {
+            $update_data['integration_type'] = sanitize_text_field($data['integration_type']);
+        }
+        if (isset($data['bunny_library_id'])) {
+            $update_data['bunny_library_id'] = sanitize_text_field($data['bunny_library_id']);
+        }
+        if (isset($data['presto_player_id'])) {
+            $update_data['presto_player_id'] = sanitize_text_field($data['presto_player_id']);
+        }
+        if (isset($data['direct_url'])) {
+            $update_data['direct_url'] = esc_url_raw($data['direct_url']);
         }
         
         if (empty($update_data)) {

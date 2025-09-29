@@ -530,16 +530,17 @@ class CPP_Video_Manager {
      *
      * @param string $event_type Event type
      * @param string $video_id   Video identifier
-     * @param string $details    Event details
+     * @param string|array $details Details or metadata
      * @since 1.0.0
      */
-    private function log_event($event_type, $video_id, $details) {
+    private function log_event($event_type, $video_id, $details = '') {
+        if (!class_exists('CPP_Analytics')) {
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
+        }
         $analytics = new CPP_Analytics();
-        
         $analytics->log_event($event_type, 'video', $video_id, array(
             'details' => $details,
             'user_id' => get_current_user_id(),
-            'ip_address' => $this->get_client_ip(),
         ));
     }
 
@@ -564,17 +565,17 @@ class CPP_Video_Manager {
         // Inactive videos
         $stats['inactive_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'inactive'") ?: 0;
         
-        // Videos with Bunny integration
-        $stats['bunny_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE bunny_video_id IS NOT NULL AND bunny_video_id != ''") ?: 0;
+    // Videos with Bunny integration
+    $stats['bunny_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE bunny_library_id IS NOT NULL AND bunny_library_id != ''") ?: 0;
         
-        // Videos with Presto integration
-        $stats['presto_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE presto_video_id IS NOT NULL AND presto_video_id != ''") ?: 0;
+    // Videos with Presto integration
+    $stats['presto_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE presto_player_id IS NOT NULL AND presto_player_id != ''") ?: 0;
         
         // Total usage count
         $stats['total_usage'] = $wpdb->get_var("SELECT SUM(usage_count) FROM {$table_name}") ?: 0;
         
-        // Videos with expiration
-        $stats['expiring_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE expires_at IS NOT NULL AND expires_at > NOW()") ?: 0;
+        // Videos with expiration (not tracked in current schema)
+        $stats['expiring_videos'] = 0;
         
         return $stats;
     }

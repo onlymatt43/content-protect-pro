@@ -190,7 +190,7 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
                 </li>
                 <li>
                     <strong><?php _e('Use Shortcodes', 'content-protect-pro'); ?></strong>
-                    <p><?php _e('Add [cpp_video_player video_id="123" required_value="10"] to your posts.', 'content-protect-pro'); ?></p>
+                    <p><?php _e('Add [cpp_video_player video_id="123"] to your posts.', 'content-protect-pro'); ?></p>
                 </li>
             </ol>
         </div>

@@ -91,6 +91,7 @@ class Content_Protect_Pro {
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics-export.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager-advanced.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-settings-advanced.php';
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
         
         // Helper functions (already loaded in main plugin file, but double-check)
         if (!function_exists('cpp_convert_to_minutes')) {
@@ -161,6 +162,10 @@ class Content_Protect_Pro {
      * @since 1.0.0
      */
     public function run() {
+        // Run DB migrations if needed
+        if (class_exists('CPP_Migrations')) {
+            CPP_Migrations::maybe_migrate();
+        }
         $this->loader->run();
     }
 
