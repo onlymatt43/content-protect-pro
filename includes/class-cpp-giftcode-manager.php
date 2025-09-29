@@ -13,14 +13,34 @@ if (!defined('ABSPATH')) {
 class CPP_Giftcode_Manager {
 
     /**
-     * Validate a gift code
+     * Validate a gift code with CSRF protection
      *
      * @param string $code The gift code to validate
+     * @param string $nonce CSRF nonce (optional for backward compatibility)
      * @return array Validation result
      * @since 1.0.0
      */
-    public function validate_code($code) {
+    public function validate_code($code, $nonce = '') {
         global $wpdb;
+        
+        // CSRF Protection - verify nonce if provided
+        if (!empty($nonce) && defined('DOING_AJAX') && DOING_AJAX) {
+            if (!wp_verify_nonce($nonce, 'cpp_validate_code')) {
+                return array(
+                    'valid' => false,
+                    'message' => 'Security check failed. Please refresh and try again.'
+                );
+            }
+        }
+        
+        // Rate limiting check
+        $client_ip = cpp_get_client_ip();
+        if (!$this->check_rate_limit($client_ip)) {
+            return array(
+                'valid' => false,
+                'message' => 'Too many attempts. Please wait before trying again.'
+            );
+        }
         
         $settings = get_option('cpp_giftcode_settings', array());
         $case_sensitive = isset($settings['case_sensitive']) ? $settings['case_sensitive'] : 0;
@@ -47,8 +67,13 @@ class CPP_Giftcode_Manager {
             );
         }
         
+        // Decrypt secure token if encrypted
+        if (!empty($giftcode->secure_token) && class_exists('CPP_Encryption')) {
+            $giftcode->secure_token = CPP_Encryption::decrypt($giftcode->secure_token);
+        }
+        
         // Check if expired
-        if ($giftcode->expires_at && strtotime($giftcode->expires_at) < current_time('timestamp')) {
+        if ($giftcode->expires_at && strtotime($giftcode->expires_at) < time()) {
             $this->log_event('giftcode_validation_failed', $code, 'expired');
             return array(
                 'valid' => false,
@@ -56,13 +81,16 @@ class CPP_Giftcode_Manager {
             );
         }
         
-        // Check usage limit
-        if ($giftcode->usage_count >= $giftcode->usage_limit) {
-            $this->log_event('giftcode_validation_failed', $code, 'usage_exceeded');
-            return array(
-                'valid' => false,
-                'message' => __('This gift code has already been used.', 'content-protect-pro')
-            );
+        // Check IP restrictions if any
+        if (!empty($giftcode->ip_restrictions)) {
+            $client_ip = cpp_get_client_ip();
+            if (!cpp_validate_client_ip($client_ip, $giftcode->ip_restrictions)) {
+                $this->log_event('giftcode_validation_failed', $code, 'ip_restricted');
+                return array(
+                    'valid' => false,
+                    'message' => __('This gift code is not available from your location.', 'content-protect-pro')
+                );
+            }
         }
         
         // Check status
@@ -74,21 +102,29 @@ class CPP_Giftcode_Manager {
             );
         }
         
-        // Update usage count
-        $wpdb->update(
-            $table_name,
-            array('usage_count' => $giftcode->usage_count + 1),
-            array('id' => $giftcode->id),
-            array('%d'),
-            array('%d')
+        // Create secure session for this client
+        $session_result = cpp_create_session(
+            $giftcode->code,
+            $giftcode->duration_minutes,
+            $giftcode->secure_token
         );
+        
+        if (!$session_result['success']) {
+            $this->log_event('giftcode_validation_failed', $code, 'session_creation_failed');
+            return array(
+                'valid' => false,
+                'message' => 'Failed to create session. Please try again.'
+            );
+        }
         
         $this->log_event('giftcode_validation_success', $code, 'validated');
         
         return array(
             'valid' => true,
-            'message' => __('Gift code validated successfully!', 'content-protect-pro'),
-            'value' => $giftcode->value,
+            'message' => 'Access granted! Your session is now active.',
+            'access_duration_minutes' => intval($giftcode->duration_minutes),
+            'session_expires_at' => date('Y-m-d H:i:s', $session_result['expires_at']),
+            'session_id' => $session_result['session_id'],
             'redirect_url' => ''
         );
     }
@@ -229,6 +265,15 @@ class CPP_Giftcode_Manager {
         
         $giftcodes = $wpdb->get_results($data_sql);
         
+        // Decrypt secure tokens for display
+        if (class_exists('CPP_Encryption')) {
+            foreach ($giftcodes as $giftcode) {
+                if (!empty($giftcode->secure_token)) {
+                    $giftcode->secure_token = CPP_Encryption::decrypt($giftcode->secure_token);
+                }
+            }
+        }
+        
         return array(
             'giftcodes' => $giftcodes,
             'total' => $total,
@@ -277,8 +322,9 @@ class CPP_Giftcode_Manager {
      * @since 1.0.0
      */
     private function log_event($event_type, $code, $details) {
-        // Load analytics class
+        // Load analytics and token helper classes
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
+        require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
         $analytics = new CPP_Analytics();
         
         $analytics->log_event($event_type, 'giftcode', $code, array(
@@ -434,6 +480,7 @@ class CPP_Giftcode_Manager {
         
         $defaults = array(
             'code' => '',
+            'secure_token' => '',
             'value' => 0,
             'max_uses' => 1,
             'used_count' => 0,
@@ -456,7 +503,13 @@ class CPP_Giftcode_Manager {
             return false;
         }
         
-        $result = $wpdb->insert($table_name, $data);
+        // Encrypt sensitive data before storage if encryption is available
+        $storage_data = $data;
+        if (!empty($data['secure_token']) && class_exists('CPP_Encryption')) {
+            $storage_data['secure_token'] = CPP_Encryption::encrypt($data['secure_token']);
+        }
+        
+        $result = $wpdb->insert($table_name, $storage_data);
         
         if ($result) {
             $this->log_event('giftcode_created', $data['code'], 'created');
@@ -523,5 +576,57 @@ class CPP_Giftcode_Manager {
         }
         
         return false;
+    }
+
+    /**
+     * Check rate limiting for gift code validation attempts
+     *
+     * @param string $client_ip Client IP address
+     * @return bool True if within rate limit
+     * @since 1.0.0
+     */
+    private function check_rate_limit($client_ip) {
+        $transient_key = 'cpp_rate_limit_' . md5($client_ip);
+        $attempts = get_transient($transient_key);
+        
+        if ($attempts === false) {
+            // First attempt, set counter
+            set_transient($transient_key, 1, 60); // 1 minute window
+            return true;
+        }
+        
+        if ($attempts >= 10) { // Max 10 attempts per minute
+            return false;
+        }
+        
+        // Increment counter
+        set_transient($transient_key, $attempts + 1, 60);
+        return true;
+    }
+
+    /**
+     * Secure token comparison to prevent timing attacks
+     *
+     * @param string $token1 First token
+     * @param string $token2 Second token
+     * @return bool True if tokens match
+     * @since 1.0.0
+     */
+    private function secure_compare($token1, $token2) {
+        if (function_exists('hash_equals')) {
+            return hash_equals($token1, $token2);
+        }
+        
+        // Fallback for older PHP versions
+        if (strlen($token1) !== strlen($token2)) {
+            return false;
+        }
+        
+        $result = 0;
+        for ($i = 0; $i < strlen($token1); $i++) {
+            $result |= ord($token1[$i]) ^ ord($token2[$i]);
+        }
+        
+        return $result === 0;
     }
 }

@@ -338,8 +338,133 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
 
 <script>
 function addVideo() {
-    // This would open a modal or redirect to add video page
-    alert('<?php _e('Add Video functionality coming soon!', 'content-protect-pro'); ?>');
+    // Create modal for adding video
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.5); z-index: 9999; display: flex; 
+        align-items: center; justify-content: center; overflow-y: auto;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90%; overflow-y: auto;">
+            <h3>Add Protected Video</h3>
+            <form id="addVideoForm">
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="width: 30%;"><label><strong>Video ID:</strong></label></td>
+                        <td><input type="text" id="video_id" placeholder="bunny-video-guid-or-youtube-id" style="width: 100%;" required></td>
+                    </tr>
+                    <tr>
+                        <td><label><strong>Title:</strong></label></td>
+                        <td><input type="text" id="video_title" placeholder="Video Title" style="width: 100%;" required></td>
+                    </tr>
+                    <tr>
+                        <td><label><strong>Required Access (Minutes):</strong></label></td>
+                        <td><input type="number" id="required_minutes" placeholder="60" min="1" style="width: 100%;" required></td>
+                    </tr>
+                    <tr>
+                        <td><label><strong>Integration:</strong></label></td>
+                        <td>
+                            <select id="integration_type" style="width: 100%;" onchange="toggleIntegrationFields()">
+                                <option value="bunny">Bunny CDN</option>
+                                <option value="presto">Presto Player</option>
+                                <option value="direct">Direct URL</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr id="bunny_library_row">
+                        <td><label>Bunny Library ID:</label></td>
+                        <td><input type="text" id="bunny_library_id" placeholder="12345" style="width: 100%;"></td>
+                    </tr>
+                    <tr id="direct_url_row" style="display: none;">
+                        <td><label>Direct Video URL:</label></td>
+                        <td><input type="url" id="direct_url" placeholder="https://..." style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td><label>Description:</label></td>
+                        <td><textarea id="video_description" rows="3" style="width: 100%;" placeholder="Optional description"></textarea></td>
+                    </tr>
+                    <tr>
+                        <td><label>Status:</label></td>
+                        <td>
+                            <select id="video_status" style="width: 100%;">
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button type="button" onclick="closeVideoModal()" style="margin-right: 10px;">Cancel</button>
+                    <button type="submit" style="background: #0073aa; color: white; border: none; padding: 8px 16px;">Add Video</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    window.videoModal = modal;
+    
+    // Handle form submission
+    document.getElementById('addVideoForm').onsubmit = function(e) {
+        e.preventDefault();
+        processVideoCreation();
+    };
+}
+
+function toggleIntegrationFields() {
+    const integrationType = document.getElementById('integration_type').value;
+    const bunnyRow = document.getElementById('bunny_library_row');
+    const directRow = document.getElementById('direct_url_row');
+    
+    bunnyRow.style.display = integrationType === 'bunny' ? 'table-row' : 'none';
+    directRow.style.display = integrationType === 'direct' ? 'table-row' : 'none';
+}
+
+function closeVideoModal() {
+    if (window.videoModal) {
+        document.body.removeChild(window.videoModal);
+        window.videoModal = null;
+    }
+}
+
+function processVideoCreation() {
+    const videoData = {
+        video_id: document.getElementById('video_id').value,
+        title: document.getElementById('video_title').value,
+        required_minutes: document.getElementById('required_minutes').value,
+        integration_type: document.getElementById('integration_type').value,
+        bunny_library_id: document.getElementById('bunny_library_id').value,
+        direct_url: document.getElementById('direct_url').value,
+        description: document.getElementById('video_description').value,
+        status: document.getElementById('video_status').value
+    };
+    
+    // Send AJAX request to create video
+    const formData = new FormData();
+    formData.append('action', 'cpp_create_video');
+    formData.append('video_data', JSON.stringify(videoData));
+    formData.append('nonce', '<?php echo wp_create_nonce("cpp_create_video"); ?>');
+    
+    fetch(ajaxurl, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Video created successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to create video'));
+        }
+        closeVideoModal();
+    })
+    .catch(error => {
+        alert('Network error: ' + error.message);
+        closeVideoModal();
+    });
 }
 
 function editVideo(videoId) {

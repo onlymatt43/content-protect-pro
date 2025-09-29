@@ -117,3 +117,10 @@ function cpp_deactivate() {
     CPP_Deactivator::deactivate();
 }
 register_deactivation_hook(__FILE__, 'cpp_deactivate');
+
+/**
+ * Load AJAX handlers
+ */
+if (is_admin() && defined('DOING_AJAX') && DOING_AJAX) {
+    require_once CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php';
+}

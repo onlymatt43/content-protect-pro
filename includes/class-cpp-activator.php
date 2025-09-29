@@ -50,42 +50,50 @@ class CPP_Activator {
 
         $charset_collate = $wpdb->get_charset_collate();
 
-        // Gift codes table
+        // Gift codes table (updated for token-based system)
         $table_name = $wpdb->prefix . 'cpp_giftcodes';
         $sql = "CREATE TABLE $table_name (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             code varchar(255) NOT NULL,
-            value decimal(10,2) NOT NULL DEFAULT 0.00,
+            secure_token varchar(255) NOT NULL,
+            duration_minutes int(11) NOT NULL DEFAULT 60,
+            duration_display varchar(50) DEFAULT NULL,
             status varchar(20) NOT NULL DEFAULT 'active',
-            usage_limit int(11) NOT NULL DEFAULT 1,
-            usage_count int(11) NOT NULL DEFAULT 0,
+            ip_restrictions text DEFAULT NULL,
             expires_at datetime DEFAULT NULL,
+            description text DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY code (code),
+            UNIQUE KEY secure_token (secure_token),
             KEY status (status),
-            KEY expires_at (expires_at)
+            KEY expires_at (expires_at),
+            KEY duration_minutes (duration_minutes)
         ) $charset_collate;";
 
-        // Protected videos table
+        // Protected videos table (updated schema)
         $table_name_videos = $wpdb->prefix . 'cpp_protected_videos';
         $sql_videos = "CREATE TABLE $table_name_videos (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             video_id varchar(255) NOT NULL,
             title varchar(255) NOT NULL,
-            protection_type varchar(50) NOT NULL DEFAULT 'token',
+            required_minutes int(11) NOT NULL DEFAULT 60,
+            integration_type varchar(50) NOT NULL DEFAULT 'bunny',
             bunny_library_id varchar(255) DEFAULT NULL,
             presto_player_id varchar(255) DEFAULT NULL,
-            access_level varchar(50) NOT NULL DEFAULT 'public',
-            requires_giftcode tinyint(1) NOT NULL DEFAULT 0,
-            allowed_giftcodes text DEFAULT NULL,
+            direct_url text DEFAULT NULL,
+            description text DEFAULT NULL,
+            status varchar(20) NOT NULL DEFAULT 'active',
+            usage_count int(11) NOT NULL DEFAULT 0,
+            max_uses int(11) DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY video_id (video_id),
-            KEY protection_type (protection_type),
-            KEY access_level (access_level)
+            KEY integration_type (integration_type),
+            KEY status (status),
+            KEY required_minutes (required_minutes)
         ) $charset_collate;";
 
         // Analytics table
@@ -107,10 +115,32 @@ class CPP_Activator {
             KEY created_at (created_at)
         ) $charset_collate;";
 
+        // Sessions table for token-based authentication
+        $table_name_sessions = $wpdb->prefix . 'cpp_sessions';
+        $sql_sessions = "CREATE TABLE $table_name_sessions (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            session_id varchar(255) NOT NULL,
+            code varchar(255) NOT NULL,
+            secure_token varchar(255) NOT NULL,
+            client_ip varchar(45) NOT NULL,
+            user_agent text DEFAULT NULL,
+            expires_at datetime NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            status varchar(20) NOT NULL DEFAULT 'active',
+            PRIMARY KEY (id),
+            UNIQUE KEY session_id (session_id),
+            KEY code (code),
+            KEY client_ip (client_ip),
+            KEY expires_at (expires_at),
+            KEY status (status),
+            KEY secure_token (secure_token(16))
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         dbDelta($sql_videos);
         dbDelta($sql_analytics);
+        dbDelta($sql_sessions);
     }
 
     /**

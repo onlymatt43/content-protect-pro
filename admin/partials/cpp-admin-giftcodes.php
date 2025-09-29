@@ -23,13 +23,27 @@ if ($giftcode_manager && isset($_POST['submit'])) {
         // Handle form submission
         check_admin_referer('cpp_giftcode_nonce');
         
+        // Generate secure token and simple code
+        $secure_token = isset($_POST['secure_token']) && !empty($_POST['secure_token']) ? 
+            sanitize_text_field($_POST['secure_token']) : bin2hex(random_bytes(32));
+        $simple_code = isset($_POST['code']) && !empty($_POST['code']) ? 
+            sanitize_text_field($_POST['code']) : 
+            cpp_generate_simple_code_from_token($secure_token);
+        
+        // Calculate duration in minutes based on unit
+        $duration_value = intval($_POST['duration_value']);
+        $duration_unit = sanitize_text_field($_POST['duration_unit']);
+        $duration_minutes = cpp_convert_to_minutes($duration_value, $duration_unit);
+        
         $code_data = array(
-            'code' => sanitize_text_field($_POST['code']),
-            'value' => floatval($_POST['value']),
-            'max_uses' => intval($_POST['max_uses']),
+            'code' => $simple_code,
+            'secure_token' => $secure_token,
+            'duration_minutes' => $duration_minutes,
+            'duration_display' => $duration_value . ' ' . $duration_unit,
             'expires_at' => sanitize_text_field($_POST['expires_at']),
             'status' => sanitize_text_field($_POST['status']),
-            'description' => sanitize_textarea_field($_POST['description'])
+            'description' => sanitize_textarea_field($_POST['description']),
+            'ip_restrictions' => sanitize_textarea_field($_POST['ip_restrictions'])
         );
         
         if ($action === 'add') {
@@ -105,31 +119,51 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                 
                 <tr>
                     <th scope="row">
-                        <label for="value"><?php _e('Value', 'content-protect-pro'); ?> *</label>
+                        <label for="duration_value"><?php _e('Access Duration', 'content-protect-pro'); ?> *</label>
                     </th>
                     <td>
-                        <input type="number" id="value" name="value" value="<?php echo $edit_code ? esc_attr($edit_code->value) : '0'; ?>" min="0" step="0.01" class="small-text" required />
-                        <p class="description"><?php _e('Monetary or point value of this gift code.', 'content-protect-pro'); ?></p>
+                        <input type="number" id="duration_value" name="duration_value" value="<?php echo $edit_code && $edit_code->duration_display ? intval(explode(' ', $edit_code->duration_display)[0]) : '1'; ?>" min="1" max="999" class="small-text" required />
+                        <select id="duration_unit" name="duration_unit" class="regular-text">
+                            <option value="minutes" <?php selected($edit_code && $edit_code->duration_display ? explode(' ', $edit_code->duration_display)[1] : 'hours', 'minutes'); ?>><?php _e('Minutes', 'content-protect-pro'); ?></option>
+                            <option value="hours" <?php selected($edit_code && $edit_code->duration_display ? explode(' ', $edit_code->duration_display)[1] : 'hours', 'hours'); ?>><?php _e('Hours', 'content-protect-pro'); ?></option>
+                            <option value="days" <?php selected($edit_code && $edit_code->duration_display ? explode(' ', $edit_code->duration_display)[1] : 'hours', 'days'); ?>><?php _e('Days', 'content-protect-pro'); ?></option>
+                            <option value="months" <?php selected($edit_code && $edit_code->duration_display ? explode(' ', $edit_code->duration_display)[1] : 'hours', 'months'); ?>><?php _e('Months', 'content-protect-pro'); ?></option>
+                            <option value="years" <?php selected($edit_code && $edit_code->duration_display ? explode(' ', $edit_code->duration_display)[1] : 'hours', 'years'); ?>><?php _e('Years', 'content-protect-pro'); ?></option>
+                        </select>
+                        <p class="description"><?php _e('Duration of access granted by this code. Each use creates a session tied to client IP.', 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
                 
                 <tr>
                     <th scope="row">
-                        <label for="max_uses"><?php _e('Maximum Uses', 'content-protect-pro'); ?></label>
+                        <label for="secure_token"><?php _e('Secure Token', 'content-protect-pro'); ?></label>
                     </th>
                     <td>
-                        <input type="number" id="max_uses" name="max_uses" value="<?php echo $edit_code ? esc_attr($edit_code->max_uses) : '1'; ?>" min="0" class="small-text" />
-                        <p class="description"><?php _e('Maximum number of times this code can be used. 0 = unlimited.', 'content-protect-pro'); ?></p>
+                        <input type="text" id="secure_token" name="secure_token" value="<?php echo $edit_code ? esc_attr($edit_code->secure_token) : ''; ?>" class="large-text" readonly />
+                        <button type="button" class="button button-secondary" onclick="regenerateToken()">
+                            <?php _e('Regenerate Token', 'content-protect-pro'); ?>
+                        </button>
+                        <p class="description"><?php _e('64-character secure token used for session validation and cookie signing.', 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
                 
                 <tr>
                     <th scope="row">
-                        <label for="expires_at"><?php _e('Expiration Date', 'content-protect-pro'); ?></label>
+                        <label for="ip_restrictions"><?php _e('IP Restrictions (Optional)', 'content-protect-pro'); ?></label>
+                    </th>
+                    <td>
+                        <textarea id="ip_restrictions" name="ip_restrictions" rows="3" class="large-text" placeholder="192.168.1.0/24&#10;203.0.113.5&#10;2001:db8::/32"><?php echo $edit_code ? esc_textarea($edit_code->ip_restrictions) : ''; ?></textarea>
+                        <p class="description"><?php _e('Optional IP restrictions. One per line. Supports CIDR notation (192.168.1.0/24) and IPv6.', 'content-protect-pro'); ?></p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="expires_at"><?php _e('Code Validity Until', 'content-protect-pro'); ?></label>
                     </th>
                     <td>
                         <input type="datetime-local" id="expires_at" name="expires_at" value="<?php echo $edit_code && $edit_code->expires_at ? date('Y-m-d\TH:i', strtotime($edit_code->expires_at)) : ''; ?>" />
-                        <p class="description"><?php _e('When this code expires. Leave empty for no expiration.', 'content-protect-pro'); ?></p>
+                        <p class="description"><?php _e('When this code becomes invalid for new sessions. Active sessions continue until their time expires.', 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
                 
@@ -198,8 +232,9 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                             <input type="checkbox" />
                         </td>
                         <th class="manage-column column-code"><?php _e('Code', 'content-protect-pro'); ?></th>
-                        <th class="manage-column column-value"><?php _e('Value', 'content-protect-pro'); ?></th>
-                        <th class="manage-column column-uses"><?php _e('Uses', 'content-protect-pro'); ?></th>
+                        <th class="manage-column column-duration"><?php _e('Duration', 'content-protect-pro'); ?></th>
+                        <th class="manage-column column-token"><?php _e('Token (Last 8)', 'content-protect-pro'); ?></th>
+                        <th class="manage-column column-sessions"><?php _e('Active Sessions', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-status"><?php _e('Status', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-expires"><?php _e('Expires', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-created"><?php _e('Created', 'content-protect-pro'); ?></th>
@@ -221,16 +256,18 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="column-value">
-                                    <?php echo esc_html($code->value); ?>
+                                <td class="column-duration">
+                                    <?php echo esc_html($code->duration_display ?: ($code->value . ' min')); ?>
                                 </td>
-                                <td class="column-uses">
-                                    <?php echo esc_html($code->used_count); ?>
-                                    <?php if ($code->max_uses > 0): ?>
-                                        / <?php echo esc_html($code->max_uses); ?>
-                                    <?php else: ?>
-                                        / <?php _e('∞', 'content-protect-pro'); ?>
-                                    <?php endif; ?>
+                                <td class="column-token">
+                                    <code><?php echo esc_html(substr($code->secure_token ?: 'N/A', -8)); ?></code>
+                                </td>
+                                <td class="column-sessions">
+                                    <?php 
+                                    // Count active sessions for this code (would need to implement session tracking)
+                                    $active_sessions = 0; // Placeholder - implement session counting
+                                    echo esc_html($active_sessions); 
+                                    ?>
                                 </td>
                                 <td class="column-status">
                                     <?php
@@ -344,28 +381,184 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
 
 <script>
 function generateCode() {
+    // Generate a simple 6-character code from current timestamp
+    const timestamp = Date.now().toString();
+    const hash = timestamp.substr(-6);
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
-    for (let i = 0; i < 8; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    
+    // Convert hash to readable code
+    for (let i = 0; i < 6; i++) {
+        const index = parseInt(hash[i] || '0', 10) % chars.length;
+        code += chars[index];
     }
+    
     document.getElementById('code').value = code;
 }
 
+function regenerateToken() {
+    // Generate 64-character secure token
+    const chars = 'abcdef0123456789';
+    let token = '';
+    for (let i = 0; i < 64; i++) {
+        token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    document.getElementById('secure_token').value = token;
+    
+    // Update code based on new token if code field is empty
+    if (!document.getElementById('code').value) {
+        generateCodeFromToken(token);
+    }
+}
+
+function generateCodeFromToken(token) {
+    // Generate simple code from token hash
+    const hash = token.substr(0, 8);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    
+    for (let i = 0; i < 6; i++) {
+        const charCode = hash.charCodeAt(i) || 48;
+        code += chars[charCode % chars.length];
+    }
+    
+    document.getElementById('code').value = code;
+}
+
+// Initialize token on page load for new codes
+document.addEventListener('DOMContentLoaded', function() {
+    const action = new URLSearchParams(window.location.search).get('action');
+    if (action === 'add' && !document.getElementById('secure_token').value) {
+        regenerateToken();
+    }
+});
+
 function generateBulkCodes() {
-    const quantity = prompt('<?php _e('How many codes would you like to generate?', 'content-protect-pro'); ?>', '10');
-    if (!quantity || isNaN(quantity) || quantity < 1 || quantity > 1000) {
-        alert('<?php _e('Please enter a valid quantity (1-1000).', 'content-protect-pro'); ?>');
-        return;
+    // Show bulk generation form
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.5); z-index: 9999; display: flex; 
+        align-items: center; justify-content: center;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%;">
+            <h3>Generate Bulk Gift Codes</h3>
+            <form id="bulkForm">
+                <table style="width: 100%;">
+                    <tr>
+                        <td><label>Base Code Prefix:</label></td>
+                        <td><input type="text" id="bulk_prefix" value="PROMO" maxlength="10" style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td><label>Quantity:</label></td>
+                        <td><input type="number" id="bulk_quantity" value="10" min="1" max="100" style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td><label>Duration Value:</label></td>
+                        <td><input type="number" id="bulk_duration_value" value="2" min="1" max="999" style="width: 100%;"></td>
+                    </tr>
+                    <tr>
+                        <td><label>Duration Unit:</label></td>
+                        <td>
+                            <select id="bulk_duration_unit" style="width: 100%;">
+                                <option value="minutes">Minutes</option>
+                                <option value="hours" selected>Hours</option>
+                                <option value="days">Days</option>
+                                <option value="months">Months</option>
+                                <option value="years">Years</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label>Description:</label></td>
+                        <td><input type="text" id="bulk_description" value="Bulk generated codes" style="width: 100%;"></td>
+                    </tr>
+                </table>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button type="button" onclick="closeBulkModal()" style="margin-right: 10px;">Cancel</button>
+                    <button type="submit" style="background: #0073aa; color: white; border: none; padding: 8px 16px;">Generate</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    window.bulkModal = modal;
+    
+    // Handle form submission
+    document.getElementById('bulkForm').onsubmit = function(e) {
+        e.preventDefault();
+        processBulkGeneration();
+    };
+}
+
+function closeBulkModal() {
+    if (window.bulkModal) {
+        document.body.removeChild(window.bulkModal);
+        window.bulkModal = null;
+    }
+}
+
+function processBulkGeneration() {
+    const prefix = document.getElementById('bulk_prefix').value;
+    const quantity = parseInt(document.getElementById('bulk_quantity').value);
+    const durationValue = document.getElementById('bulk_duration_value').value;
+    const durationUnit = document.getElementById('bulk_duration_unit').value;
+    const description = document.getElementById('bulk_description').value;
+    
+    // Generate codes with unique tokens
+    const codes = [];
+    for (let i = 1; i <= quantity; i++) {
+        const token = generateUniqueToken();
+        const code = prefix + '-' + String(i).padStart(2, '0'); // PROMO-01, PROMO-02, etc.
+        
+        codes.push({
+            code: code,
+            secure_token: token,
+            duration_value: durationValue,
+            duration_unit: durationUnit,
+            description: description + ' #' + i
+        });
     }
     
-    const value = prompt('<?php _e('What value should each code have?', 'content-protect-pro'); ?>', '10');
-    if (!value || isNaN(value) || value < 0) {
-        alert('<?php _e('Please enter a valid value.', 'content-protect-pro'); ?>');
-        return;
+    // Send AJAX request to create codes
+    sendBulkCodes(codes);
+}
+
+function generateUniqueToken() {
+    const chars = 'abcdef0123456789';
+    let token = '';
+    for (let i = 0; i < 64; i++) {
+        token += chars.charAt(Math.floor(Math.random() * chars.length));
     }
+    return token;
+}
+
+function sendBulkCodes(codes) {
+    const formData = new FormData();
+    formData.append('action', 'cpp_bulk_create_codes');
+    formData.append('codes', JSON.stringify(codes));
+    formData.append('nonce', '<?php echo wp_create_nonce("cpp_bulk_codes"); ?>');
     
-    // This would typically make an AJAX request to generate bulk codes
-    alert('<?php _e('Bulk code generation feature coming soon!', 'content-protect-pro'); ?>');
+    fetch(ajaxurl, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Successfully created ' + data.created + ' codes!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to create codes'));
+        }
+        closeBulkModal();
+    })
+    .catch(error => {
+        alert('Network error: ' + error.message);
+        closeBulkModal();
+    });
 }
 </script>

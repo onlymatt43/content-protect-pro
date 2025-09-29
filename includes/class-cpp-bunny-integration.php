@@ -23,7 +23,15 @@ class CPP_Bunny_Integration {
     const STREAM_API_URL = 'https://video.bunnycdn.com';
 
     /**
-     * API key for Bunny CDN
+     * API key        // Use secure HTTP request with SSL validation
+        $response = CPP_SSL_Validator::secure_http_request($url, array(
+            'method' => 'GET',
+            'headers' => array(
+                'AccessKey' => $this->api_key,
+                'Content-Type' => 'application/json',
+            ),
+            'timeout' => 30,
+        ));nny CDN
      *
      * @var string
      */
@@ -43,7 +51,15 @@ class CPP_Bunny_Integration {
      */
     public function __construct() {
         $settings = get_option('cpp_bunny_settings', array());
-        $this->api_key = isset($settings['api_key']) ? $settings['api_key'] : '';
+        
+        // Decrypt API key if encrypted
+        $api_key = isset($settings['api_key']) ? $settings['api_key'] : '';
+        if (!empty($api_key) && class_exists('CPP_Encryption')) {
+            $this->api_key = CPP_Encryption::decrypt($api_key);
+        } else {
+            $this->api_key = $api_key;
+        }
+        
         $this->library_id = isset($settings['library_id']) ? $settings['library_id'] : '';
     }
 
