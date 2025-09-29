@@ -67,6 +67,20 @@ class CPP_Public {
             false
         );
 
+        // Optionally enqueue hls.js for Bunny HLS playback on non-Safari browsers
+        $integration_settings = get_option('cpp_integration_settings', array());
+        $enable_hls = !empty($integration_settings['enable_hls_polyfill']);
+        $pref = isset($integration_settings['provider_preference']) ? $integration_settings['provider_preference'] : 'auto';
+        if ($enable_hls) {
+            wp_enqueue_script(
+                'hls-js',
+                'https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js',
+                array(),
+                '1.5.7',
+                true
+            );
+        }
+
         wp_localize_script(
             $this->plugin_name,
             'cpp_public_ajax',
@@ -79,7 +93,8 @@ class CPP_Public {
                     'used_code' => __('This gift code has already been used.', 'content-protect-pro'),
                     'loading' => __('Loading...', 'content-protect-pro'),
                     'error' => __('An error occurred. Please try again.', 'content-protect-pro'),
-                )
+                ),
+                'hls_enabled' => (bool) $enable_hls
             )
         );
     }
@@ -297,17 +312,26 @@ class CPP_Public {
             $response['token'] = $token;
         }
 
-        // Provider-specific info
+        // Provider-specific info with preference
         if ($video_row) {
-            if (!empty($video_row->presto_player_id)) {
+            $integration_settings = get_option('cpp_integration_settings', array());
+            $pref = isset($integration_settings['provider_preference']) ? $integration_settings['provider_preference'] : 'auto';
+            // Decide order: auto and presto -> prefer Presto; bunny -> prefer Bunny
+            $try_presto_first = ($pref === 'presto' || $pref === 'auto');
+
+            $presto_done = false;
+            if ($try_presto_first && !empty($video_row->presto_player_id)) {
                 // Build Presto embed via shortcode
                 $presto_id = intval($video_row->presto_player_id);
                 $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
                 if (!empty($embed_html)) {
                     $response['provider'] = 'presto';
                     $response['presto_embed'] = $embed_html;
+                    $presto_done = true;
                 }
-            } elseif (!empty($video_row->bunny_library_id)) {
+            }
+
+            if (!$presto_done && !empty($video_row->bunny_library_id)) {
                 // Generate Bunny signed URL
                 if (!class_exists('CPP_Bunny_Integration')) {
                     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';

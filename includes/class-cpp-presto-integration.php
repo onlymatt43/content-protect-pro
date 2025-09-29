@@ -486,7 +486,7 @@ class CPP_Presto_Integration {
                 var accessCode = $form.find('input[name="access_code"]').val();
                 
                 $.ajax({
-                    url: ajaxurl,
+                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
                     method: 'POST',
                     data: {
                         action: 'cpp_presto_validate_access',

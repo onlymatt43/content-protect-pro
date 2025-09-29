@@ -60,7 +60,9 @@ $integration_defaults = array(
     'bunny_library_id' => '',
     'bunny_pullzone' => '',
     'presto_enabled' => 0,
-    'presto_license_key' => ''
+    'presto_license_key' => '',
+    'provider_preference' => 'auto',
+    'enable_hls_polyfill' => 0
 );
 
 $general_settings = wp_parse_args($general_settings, $general_defaults);
@@ -304,6 +306,35 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                     </table>
                 </div>
                 
+                <h3><?php _e('Provider Preference', 'content-protect-pro'); ?></h3>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php _e('Preferred Provider', 'content-protect-pro'); ?></th>
+                        <td>
+                            <select name="cpp_integration_settings[provider_preference]">
+                                <option value="auto" <?php selected('auto', $integration_settings['provider_preference']); ?>><?php _e('Auto (prefer Presto if available, otherwise Bunny)', 'content-protect-pro'); ?></option>
+                                <option value="presto" <?php selected('presto', $integration_settings['provider_preference']); ?>><?php _e('Prefer Presto embed', 'content-protect-pro'); ?></option>
+                                <option value="bunny" <?php selected('bunny', $integration_settings['provider_preference']); ?>><?php _e('Prefer Bunny signed HLS', 'content-protect-pro'); ?></option>
+                            </select>
+                            <p class="description"><?php _e('When a video has both Presto and Bunny configured, choose which provider to render on the front-end.', 'content-protect-pro'); ?></p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3><?php _e('Player Compatibility', 'content-protect-pro'); ?></h3>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php _e('Enable HLS.js Polyfill', 'content-protect-pro'); ?></th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="cpp_integration_settings[enable_hls_polyfill]" value="1" <?php checked(1, !empty($integration_settings['enable_hls_polyfill'])); ?> />
+                                <?php _e('Load HLS.js to support Bunny HLS in non-Safari browsers', 'content-protect-pro'); ?>
+                            </label>
+                            <p class="description"><?php _e('Recommended for Chrome/Firefox if using Bunny signed HLS. Adds a small script to enable HLS playback.', 'content-protect-pro'); ?></p>
+                        </td>
+                    </tr>
+                </table>
+
             <?php elseif ($active_tab == 'advanced'): ?>
                 <div class="cpp-settings-section">
                     <h2><?php _e('Advanced Settings', 'content-protect-pro'); ?></h2>

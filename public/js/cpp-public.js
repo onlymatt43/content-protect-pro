@@ -262,7 +262,11 @@
                 var videoEl = $player.find('video')[0];
 
                 // Basic HLS support: Safari plays HLS natively; others may need hls.js (optional here)
-                if (videoEl.canPlayType('application/vnd.apple.mpegURL')) {
+                if (window.Hls && window.Hls.isSupported()) {
+                    var hls = new Hls();
+                    hls.loadSource(hlsUrl);
+                    hls.attachMedia(videoEl);
+                } else if (videoEl.canPlayType('application/vnd.apple.mpegURL')) {
                     videoEl.src = hlsUrl;
                 } else {
                     // Fallback: simple source tag; for best results, load hls.js in theme when needed
