@@ -542,4 +542,40 @@ class CPP_Video_Manager {
             'ip_address' => $this->get_client_ip(),
         ));
     }
+
+    /**
+     * Get video statistics
+     *
+     * @return array Statistics
+     * @since 1.0.0
+     */
+    public function get_stats() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_protected_videos';
+        
+        $stats = array();
+        
+        // Total videos
+        $stats['total_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}") ?: 0;
+        
+        // Active videos
+        $stats['active_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'active'") ?: 0;
+        
+        // Inactive videos
+        $stats['inactive_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'inactive'") ?: 0;
+        
+        // Videos with Bunny integration
+        $stats['bunny_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE bunny_video_id IS NOT NULL AND bunny_video_id != ''") ?: 0;
+        
+        // Videos with Presto integration
+        $stats['presto_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE presto_video_id IS NOT NULL AND presto_video_id != ''") ?: 0;
+        
+        // Total usage count
+        $stats['total_usage'] = $wpdb->get_var("SELECT SUM(usage_count) FROM {$table_name}") ?: 0;
+        
+        // Videos with expiration
+        $stats['expiring_videos'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE expires_at IS NOT NULL AND expires_at > NOW()") ?: 0;
+        
+        return $stats;
+    }
 }

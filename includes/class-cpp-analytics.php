@@ -291,4 +291,50 @@ class CPP_Analytics {
         
         return $ip;
     }
+
+    /**
+     * Get summary statistics for dashboard
+     *
+     * @return array Summary statistics
+     * @since 1.0.0
+     */
+    public function get_summary_stats() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_analytics';
+        
+        // Get total events
+        $total_events = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+        
+        // Get events in last 24 hours
+        $events_24h = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table_name} WHERE created_at >= %s",
+            date('Y-m-d H:i:s', strtotime('-24 hours'))
+        ));
+        
+        // Get security events in last 30 days
+        $security_events = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'security' AND created_at >= %s",
+            date('Y-m-d H:i:s', strtotime('-30 days'))
+        ));
+        
+        // Get gift code events
+        $giftcode_events = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'giftcode' AND created_at >= %s",
+            date('Y-m-d H:i:s', strtotime('-30 days'))
+        ));
+        
+        // Get video events
+        $video_events = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'video' AND created_at >= %s",
+            date('Y-m-d H:i:s', strtotime('-30 days'))
+        ));
+        
+        return array(
+            'total_events' => intval($total_events) ?: 0,
+            'events_24h' => intval($events_24h) ?: 0,
+            'security_events' => intval($security_events) ?: 0,
+            'giftcode_events' => intval($giftcode_events) ?: 0,
+            'video_events' => intval($video_events) ?: 0,
+        );
+    }
 }

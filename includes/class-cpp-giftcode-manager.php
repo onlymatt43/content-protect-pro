@@ -310,4 +310,218 @@ class CPP_Giftcode_Manager {
         
         return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
     }
+
+    /**
+     * Get gift code statistics
+     *
+     * @return array Statistics
+     * @since 1.0.0
+     */
+    public function get_stats() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        $stats = array();
+        
+        // Total codes
+        $stats['total_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+        
+        // Active codes
+        $stats['active_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'active'");
+        
+        // Used codes
+        $stats['used_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'used'");
+        
+        // Expired codes
+        $stats['expired_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'expired' OR (expires_at IS NOT NULL AND expires_at < NOW())");
+        
+        // Total value
+        $stats['total_value'] = $wpdb->get_var("SELECT SUM(value) FROM {$table_name} WHERE status = 'active'") ?: 0;
+        
+        return $stats;
+    }
+
+    /**
+     * Get gift codes with optional filtering
+     *
+     * @param array $args Query arguments
+     * @return array Gift codes
+     * @since 1.0.0
+     */
+    public function get_codes($args = array()) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        $defaults = array(
+            'limit' => 50,
+            'offset' => 0,
+            'status' => '',
+            'search' => '',
+            'order_by' => 'created_at',
+            'order' => 'DESC'
+        );
+        
+        $args = wp_parse_args($args, $defaults);
+        
+        $where_clauses = array();
+        $where_values = array();
+        
+        // Status filter
+        if (!empty($args['status'])) {
+            $where_clauses[] = "status = %s";
+            $where_values[] = $args['status'];
+        }
+        
+        // Search filter
+        if (!empty($args['search'])) {
+            $where_clauses[] = "(code LIKE %s OR description LIKE %s)";
+            $search_term = '%' . $wpdb->esc_like($args['search']) . '%';
+            $where_values[] = $search_term;
+            $where_values[] = $search_term;
+        }
+        
+        // Build WHERE clause
+        $where_sql = '';
+        if (!empty($where_clauses)) {
+            $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
+        }
+        
+        // Build ORDER BY clause
+        $allowed_order_by = array('id', 'code', 'value', 'status', 'created_at', 'expires_at');
+        $order_by = in_array($args['order_by'], $allowed_order_by) ? $args['order_by'] : 'created_at';
+        $order = strtoupper($args['order']) === 'ASC' ? 'ASC' : 'DESC';
+        
+        // Build LIMIT clause
+        $limit_sql = '';
+        if ($args['limit'] > 0) {
+            $limit_sql = $wpdb->prepare("LIMIT %d OFFSET %d", $args['limit'], $args['offset']);
+        }
+        
+        // Execute query
+        $sql = "SELECT * FROM {$table_name} {$where_sql} ORDER BY {$order_by} {$order} {$limit_sql}";
+        
+        if (!empty($where_values)) {
+            $sql = $wpdb->prepare($sql, $where_values);
+        }
+        
+        return $wpdb->get_results($sql);
+    }
+
+    /**
+     * Get a single gift code by ID
+     *
+     * @param int $id Gift code ID
+     * @return object|null Gift code object or null
+     * @since 1.0.0
+     */
+    public function get_code($id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table_name} WHERE id = %d", $id));
+    }
+
+    /**
+     * Create a new gift code
+     *
+     * @param array $data Gift code data
+     * @return int|false Gift code ID or false on failure
+     * @since 1.0.0
+     */
+    public function create_code($data) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        $defaults = array(
+            'code' => '',
+            'value' => 0,
+            'max_uses' => 1,
+            'used_count' => 0,
+            'status' => 'active',
+            'expires_at' => null,
+            'description' => '',
+            'created_at' => current_time('mysql')
+        );
+        
+        $data = wp_parse_args($data, $defaults);
+        
+        // Validate required fields
+        if (empty($data['code'])) {
+            return false;
+        }
+        
+        // Check if code already exists
+        $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table_name} WHERE code = %s", $data['code']));
+        if ($existing) {
+            return false;
+        }
+        
+        $result = $wpdb->insert($table_name, $data);
+        
+        if ($result) {
+            $this->log_event('giftcode_created', $data['code'], 'created');
+            return $wpdb->insert_id;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Update an existing gift code
+     *
+     * @param int $id Gift code ID
+     * @param array $data Updated data
+     * @return bool Success
+     * @since 1.0.0
+     */
+    public function update_code($id, $data) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        // Remove fields that shouldn't be updated
+        unset($data['id'], $data['created_at'], $data['used_count']);
+        
+        $result = $wpdb->update(
+            $table_name,
+            $data,
+            array('id' => $id),
+            null,
+            array('%d')
+        );
+        
+        if ($result !== false) {
+            $code = $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
+            $this->log_event('giftcode_updated', $code, 'updated');
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Delete a gift code
+     *
+     * @param int $id Gift code ID
+     * @return bool Success
+     * @since 1.0.0
+     */
+    public function delete_code($id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cpp_giftcodes';
+        
+        $code = $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
+        
+        $result = $wpdb->delete(
+            $table_name,
+            array('id' => $id),
+            array('%d')
+        );
+        
+        if ($result) {
+            $this->log_event('giftcode_deleted', $code, 'deleted');
+            return true;
+        }
+        
+        return false;
+    }
 }
