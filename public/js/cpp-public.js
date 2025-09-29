@@ -254,6 +254,8 @@
                 return;
             }
 
+            // DRM path removed (using token-based HLS only)
+
             // If server returned a Bunny signed HLS URL, render an HTML5 video with HLS.
             if (meta.provider === 'bunny' && meta.signed_url) {
                 var hlsUrl = meta.signed_url;

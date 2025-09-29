@@ -14,11 +14,11 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 
 ### 🎬 Video Protection
 - **JWT token-based video protection** for secure streaming
-- **Full Bunny DRM integration** with signed URLs and license management
+- **Bunny signed URL integration** for secure streaming
 - **Presto Player Pro compatibility** with overlay protection and hooks
 - **Access level control** (public, private, gift code required)
 - **Time-limited video tokens** with configurable expiry and IP restriction
-- **DRM support** for Widevine and PlayReady protection
+  
 - **Shortcode-based video embedding** with protection
 
 ### 📊 Analytics & Monitoring
@@ -112,7 +112,7 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 - **Token Expiry**: How long video access tokens remain valid (300-86400 seconds)
 - **Bunny Integration**: API key, library ID, and DRM configuration
 - **Presto Integration**: Player hooks and overlay protection settings
-- **DRM Settings**: Widevine and PlayReady license server configuration
+  
 - **IP Restriction**: Bind tokens to client IP addresses
 - **Default Access Level**: Default protection level for new videos
 
@@ -144,11 +144,10 @@ Records all events for analytics and monitoring purposes.
 
 ## Integration Details
 
-### Bunny DRM Integration
-Content Protect Pro provides full integration with Bunny Stream and DRM:
+### Bunny Integration
+Content Protect Pro integrates with Bunny Stream:
 
-- **Signed URLs**: Automatic generation of time-limited, IP-restricted video URLs
-- **DRM Protection**: Widevine and PlayReady license management
+- **Signed URLs**: Automatic generation of time-limited, IP-restricted HLS URLs
 - **Upload Management**: Direct video upload to Bunny Stream libraries
 - **Analytics Integration**: Real-time statistics from Bunny Stream API
 - **Token Authentication**: Custom token authentication for enhanced security
@@ -156,7 +155,6 @@ Content Protect Pro provides full integration with Bunny Stream and DRM:
 **Setup Requirements:**
 1. Bunny Stream account with API access
 2. Library ID and Access Key from Bunny Stream
-3. DRM license server configuration (for DRM-protected content)
 
 ### Presto Player Pro Integration
 Seamless integration with Presto Player Pro features:

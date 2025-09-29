@@ -263,6 +263,8 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                             </td>
                         </tr>
                     </table>
+
+                    
                     
                     <h3><?php _e('Presto Player Integration', 'content-protect-pro'); ?></h3>
                     <table class="form-table">

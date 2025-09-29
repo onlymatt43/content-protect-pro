@@ -59,18 +59,11 @@ class CPP_Public {
      * @since 1.0.0
      */
     public function enqueue_scripts() {
-        wp_enqueue_script(
-            $this->plugin_name,
-            CPP_PLUGIN_URL . 'public/js/cpp-public.js',
-            array('jquery'),
-            $this->version,
-            false
-        );
-
-        // Optionally enqueue hls.js for Bunny HLS playback on non-Safari browsers
+        // Determine integration settings first to set script dependencies/order
         $integration_settings = get_option('cpp_integration_settings', array());
         $enable_hls = !empty($integration_settings['enable_hls_polyfill']);
         $pref = isset($integration_settings['provider_preference']) ? $integration_settings['provider_preference'] : 'auto';
+        $deps = array('jquery');
         if ($enable_hls) {
             wp_enqueue_script(
                 'hls-js',
@@ -79,7 +72,17 @@ class CPP_Public {
                 '1.5.7',
                 true
             );
+            $deps[] = 'hls-js';
         }
+
+        // Enqueue main public script after its dependencies, in footer to avoid race conditions
+        wp_enqueue_script(
+            $this->plugin_name,
+            CPP_PLUGIN_URL . 'public/js/cpp-public.js',
+            $deps,
+            $this->version,
+            true
+        );
 
         wp_localize_script(
             $this->plugin_name,
@@ -332,7 +335,7 @@ class CPP_Public {
             }
 
             if (!$presto_done && !empty($video_row->bunny_library_id)) {
-                // Generate Bunny signed URL
+                // Generate Bunny signed URL (token-based HLS)
                 if (!class_exists('CPP_Bunny_Integration')) {
                     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
                 }

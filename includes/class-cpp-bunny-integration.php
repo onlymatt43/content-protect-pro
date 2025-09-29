@@ -193,6 +193,8 @@ class CPP_Bunny_Integration {
         return $data;
     }
 
+    // DRM (DASH/MPD) helpers intentionally omitted; using token-based HLS only for now.
+
     /**
      * Upload a video to Bunny Stream
      *

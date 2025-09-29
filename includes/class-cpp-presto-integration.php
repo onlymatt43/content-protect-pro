@@ -101,11 +101,7 @@ class CPP_Presto_Integration {
             $config['controls'] = false;
             $config['autoplay'] = false;
         } else {
-            // User has access, apply any additional security measures
-            if ($protection_settings['drm_enabled']) {
-                $config = $this->apply_drm_config($config, $id);
-            }
-            
+            // User has access, apply token protection if enabled
             if ($protection_settings['token_auth']) {
                 $config['src'] = $this->get_token_protected_sources($id, $config['src']);
             }
@@ -301,7 +297,7 @@ class CPP_Presto_Integration {
             'bunny_enabled' => !empty($settings['bunny_library_id']),
             'bunny_library_id' => $settings['bunny_library_id'],
             'token_auth' => $settings['protection_type'] === 'token',
-            'drm_enabled' => $settings['protection_type'] === 'drm',
+            // DRM disabled for now
         );
     }
 
