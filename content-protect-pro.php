@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: Content Protect Pro
- * Plugin URI: https://github.com/yourusername/content-protect-pro
+ * Plugin URI: https://github.com/onlymatt43/content-protect-pro
  * Description: Unified protection system for gift codes and video content with advanced security features, analytics, and third-party integrations.
  * Version: 1.0.0
- * Author: Your Name
- * Author URI: https://yourwebsite.com
+ * Author: ONLY MATT
+ * Author URI: https://om43.dev
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: content-protect-pro
