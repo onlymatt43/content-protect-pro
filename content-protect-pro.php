@@ -89,6 +89,9 @@ function cpp_init() {
     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-activator.php';
     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-deactivator.php';
     require_once CPP_PLUGIN_DIR . 'includes/class-content-protect-pro.php';
+    
+    // Load helper functions
+    require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
 
     // Run the plugin
     $plugin = new Content_Protect_Pro();

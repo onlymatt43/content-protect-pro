@@ -84,6 +84,23 @@ class Content_Protect_Pro {
         // Analytics and diagnostics
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-diagnostic.php';
+        
+        // Advanced features
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-encryption.php';
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-ssl-validator.php';
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics-export.php';
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager-advanced.php';
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-settings-advanced.php';
+        
+        // Helper functions (already loaded in main plugin file, but double-check)
+        if (!function_exists('cpp_convert_to_minutes')) {
+            require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
+        }
+        
+        // AJAX handlers
+        if (file_exists(CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php')) {
+            require_once CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php';
+        }
 
         $this->loader = new CPP_Loader();
     }
