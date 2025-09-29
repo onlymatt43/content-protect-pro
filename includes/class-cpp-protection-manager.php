@@ -286,14 +286,16 @@ class CPP_Protection_Manager {
         ), $atts);
         
         // Check if user has already validated access
-        $session_code = isset($_SESSION['cpp_validated_code']) ? $_SESSION['cpp_validated_code'] : '';
+    if (!session_id()) { session_start(); }
+    $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
         
-        if ($session_code) {
+        if (!empty($session_codes)) {
             $giftcode_manager = new CPP_Giftcode_Manager();
-            $validation = $giftcode_manager->validate_code($session_code);
-            
-            if ($validation['valid'] && $validation['data']['value'] >= $atts['required_value']) {
-                return do_shortcode($content);
+            foreach ($session_codes as $code) {
+                $validation = $giftcode_manager->validate_code($code);
+                if ($validation['valid'] && $validation['data']['value'] >= $atts['required_value']) {
+                    return do_shortcode($content);
+                }
             }
         }
         
@@ -391,14 +393,16 @@ class CPP_Protection_Manager {
         }
         
         // Check if user has access
-        $session_code = isset($_SESSION['cpp_validated_code']) ? $_SESSION['cpp_validated_code'] : '';
+    if (!session_id()) { session_start(); }
+    $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
         
-        if ($session_code) {
+        if (!empty($session_codes)) {
             $giftcode_manager = new CPP_Giftcode_Manager();
-            $validation = $giftcode_manager->validate_code($session_code);
-            
-            if ($validation['valid'] && $validation['data']['value'] >= $required_value) {
-                return $content;
+            foreach ($session_codes as $code) {
+                $validation = $giftcode_manager->validate_code($code);
+                if ($validation['valid'] && $validation['data']['value'] >= $required_value) {
+                    return $content;
+                }
             }
         }
         

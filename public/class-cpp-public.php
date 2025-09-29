@@ -150,6 +150,9 @@ class CPP_Public {
 
         // Check if gift code is required and validate
         if ($atts['require_giftcode']) {
+            if (!session_id()) {
+                session_start();
+            }
             $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
             $allowed_codes = !empty($atts['allowed_codes']) ? explode(',', $atts['allowed_codes']) : array();
             
@@ -199,6 +202,9 @@ class CPP_Public {
             'failure_content' => __('Please enter a valid gift code to access this content.', 'content-protect-pro'),
         ), $atts, 'cpp_giftcode_check');
 
+        if (!session_id()) {
+            session_start();
+        }
         $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
         $required_codes = !empty($atts['required_codes']) ? explode(',', $atts['required_codes']) : array();
         

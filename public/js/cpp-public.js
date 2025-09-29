@@ -18,6 +18,8 @@
         bindEvents: function() {
             // Gift code form submission
             $(document).on('submit', '#cpp-giftcode-form', this.handleGiftCodeSubmission);
+            // Inline gift code forms (content and video protection)
+            $(document).on('submit', '.cpp-giftcode-form, .cpp-video-giftcode-form', CPP_Public.handleInlineGiftCodeForm);
             
             // Video player initialization
             // Ensure a valid function reference is bound; use object method explicitly
@@ -126,6 +128,71 @@
                 complete: function() {
                     $button.prop('disabled', false);
                     $button.html('Validate Code');
+                }
+            });
+        },
+
+        // Handle inline gift code forms for protected content and videos
+        handleInlineGiftCodeForm: function(e) {
+            e.preventDefault();
+
+            var $form = $(this);
+            var $container = $form.closest('.cpp-protected-content, .cpp-video-player');
+            var $button = $form.find('button[type="submit"]');
+            var $message = $container.find('.cpp-access-message, .cpp-video-message').first();
+            var codeInput = $form.find('input[name="gift_code"]');
+            var code = codeInput.val().trim();
+
+            if (!code) {
+                if ($message.length) {
+                    CPP_Public.showMessage($message, 'error', cpp_public_ajax.strings ? (cpp_public_ajax.strings.invalid_code || 'Invalid gift code.') : 'Invalid gift code.');
+                }
+                return;
+            }
+
+            // Show loading state
+            $button.prop('disabled', true);
+            var origText = $button.text();
+            $button.html('<span class="cpp-loading-spinner"></span> ' + (cpp_public_ajax.strings ? cpp_public_ajax.strings.loading : 'Loading...'));
+            if ($message.length) $message.hide();
+
+            $.ajax({
+                url: cpp_public_ajax.ajax_url,
+                method: 'POST',
+                data: {
+                    action: 'cpp_validate_giftcode',
+                    code: code,
+                    nonce: cpp_public_ajax.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        if ($message.length) CPP_Public.showMessage($message, 'success', response.data.message || 'Access granted.');
+
+                        // Clear input
+                        codeInput.val('');
+
+                        // Reveal content or initialize video
+                        if ($container.hasClass('cpp-protected-content')) {
+                            $container.find('.cpp-access-form').hide();
+                            $container.find('.cpp-protected-content-inner').show();
+                        } else if ($container.hasClass('cpp-video-player')) {
+                            // Hide overlay and init player
+                            $container.find('.cpp-video-access-form, .cpp-access-overlay').hide();
+                            $container.find('.cpp-video-player-container').show();
+                            var videoId = $container.data('video-id');
+                            if (videoId) {
+                                CPP_Public.loadVideoPlayer($container, videoId);
+                            }
+                        }
+                    } else {
+                        if ($message.length) CPP_Public.showMessage($message, 'error', response.data && response.data.message ? response.data.message : (cpp_public_ajax.strings ? cpp_public_ajax.strings.error : 'An error occurred.'));
+                    }
+                },
+                error: function() {
+                    if ($message.length) CPP_Public.showMessage($message, 'error', cpp_public_ajax.strings ? cpp_public_ajax.strings.error : 'An error occurred.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(origText);
                 }
             });
         },
