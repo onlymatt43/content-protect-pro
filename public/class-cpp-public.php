@@ -286,13 +286,49 @@ class CPP_Public {
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
         $video_manager = new CPP_Video_Manager();
         
-        $token = $video_manager->generate_access_token($video_id);
+        // Fetch video entry for provider-specific rendering
+        $video_row = $video_manager->get_protected_video($video_id);
+
+        $response = array();
         
+        // Legacy token (may be used by custom players)
+        $token = $video_manager->generate_access_token($video_id);
         if ($token) {
-            wp_send_json_success(array('token' => $token));
-        } else {
-            wp_send_json_error(array('message' => __('Unable to generate video access token.', 'content-protect-pro')));
+            $response['token'] = $token;
         }
+
+        // Provider-specific info
+        if ($video_row) {
+            if (!empty($video_row->presto_player_id)) {
+                // Build Presto embed via shortcode
+                $presto_id = intval($video_row->presto_player_id);
+                $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
+                if (!empty($embed_html)) {
+                    $response['provider'] = 'presto';
+                    $response['presto_embed'] = $embed_html;
+                }
+            } elseif (!empty($video_row->bunny_library_id)) {
+                // Generate Bunny signed URL
+                if (!class_exists('CPP_Bunny_Integration')) {
+                    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+                }
+                $bunny = new CPP_Bunny_Integration();
+                $signed_url = $bunny->generate_signed_url($video_id);
+                if ($signed_url) {
+                    $response['provider'] = 'bunny';
+                    $response['signed_url'] = $signed_url;
+                    $response['mime'] = 'application/x-mpegURL';
+                }
+            } else {
+                $response['provider'] = 'custom';
+            }
+        }
+
+        if (!empty($response)) {
+            wp_send_json_success($response);
+        }
+
+        wp_send_json_error(array('message' => __('Unable to generate video access details.', 'content-protect-pro')));
     }
 
     /**

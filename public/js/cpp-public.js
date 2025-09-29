@@ -232,7 +232,8 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        CPP_Public.renderVideoPlayer($player, videoId, response.data.token);
+                        var meta = $.extend({}, response.data || {});
+                        CPP_Public.renderVideoPlayer($player, videoId, response.data.token, meta);
                     } else {
                         $player.html('<div class="cpp-video-overlay">Error loading video: ' + response.data.message + '</div>');
                     }
@@ -243,35 +244,56 @@
             });
         },
 
-        renderVideoPlayer: function($player, videoId, token) {
-            // This is a placeholder for video player rendering
-            // In a real implementation, you would integrate with your video service
-            
+        renderVideoPlayer: function($player, videoId, token, meta) {
+            meta = meta || {};
+
+            // If server returned a full Presto embed, inject it.
+            if (meta.provider === 'presto' && meta.presto_embed) {
+                $player.html(meta.presto_embed);
+                CPP_Public.trackVideoEvent('video_load_start', videoId);
+                return;
+            }
+
+            // If server returned a Bunny signed HLS URL, render an HTML5 video with HLS.
+            if (meta.provider === 'bunny' && meta.signed_url) {
+                var hlsUrl = meta.signed_url;
+                var videoHtml = '<video controls playsinline preload="metadata" style="width:100%;height:100%"></video>';
+                $player.html(videoHtml);
+                var videoEl = $player.find('video')[0];
+
+                // Basic HLS support: Safari plays HLS natively; others may need hls.js (optional here)
+                if (videoEl.canPlayType('application/vnd.apple.mpegURL')) {
+                    videoEl.src = hlsUrl;
+                } else {
+                    // Fallback: simple source tag; for best results, load hls.js in theme when needed
+                    var source = document.createElement('source');
+                    source.src = hlsUrl;
+                    source.type = meta.mime || 'application/x-mpegURL';
+                    videoEl.appendChild(source);
+                }
+
+                // Attach tracking
+                videoEl.addEventListener('loadstart', function() { CPP_Public.trackVideoEvent('video_load_start', videoId); });
+                videoEl.addEventListener('play', function() { CPP_Public.trackVideoEvent('video_play', videoId); });
+                videoEl.addEventListener('pause', function() { CPP_Public.trackVideoEvent('video_pause', videoId); });
+                videoEl.addEventListener('ended', function() { CPP_Public.trackVideoEvent('video_ended', videoId); });
+                return;
+            }
+
+            // Legacy fallback: tokenized MP4 URL (custom implementation)
             var videoHtml = '<video controls preload="metadata">';
-            videoHtml += '<source src="/path/to/video/' + videoId + '?token=' + token + '" type="video/mp4">';
+            videoHtml += '<source src="/path/to/video/' + videoId + '?token=' + (token || '') + '" type="video/mp4">';
             videoHtml += '<p>Your browser does not support the video tag.</p>';
             videoHtml += '</video>';
             
             $player.html(videoHtml);
-            
-            // Initialize video player with additional features
+
             var video = $player.find('video')[0];
             if (video) {
-                video.addEventListener('loadstart', function() {
-                    CPP_Public.trackVideoEvent('video_load_start', videoId);
-                });
-                
-                video.addEventListener('play', function() {
-                    CPP_Public.trackVideoEvent('video_play', videoId);
-                });
-                
-                video.addEventListener('pause', function() {
-                    CPP_Public.trackVideoEvent('video_pause', videoId);
-                });
-                
-                video.addEventListener('ended', function() {
-                    CPP_Public.trackVideoEvent('video_ended', videoId);
-                });
+                video.addEventListener('loadstart', function() { CPP_Public.trackVideoEvent('video_load_start', videoId); });
+                video.addEventListener('play', function() { CPP_Public.trackVideoEvent('video_play', videoId); });
+                video.addEventListener('pause', function() { CPP_Public.trackVideoEvent('video_pause', videoId); });
+                video.addEventListener('ended', function() { CPP_Public.trackVideoEvent('video_ended', videoId); });
             }
         },
 
