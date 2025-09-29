@@ -99,7 +99,7 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
                             <tr>
                                 <th><?php _e('Video ID', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Title', 'content-protect-pro'); ?></th>
-                                <th><?php _e('Required Value', 'content-protect-pro'); ?></th>
+                                <th><?php _e('Required Minutes', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Integration', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Status', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Usage', 'content-protect-pro'); ?></th>
@@ -116,15 +116,15 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
                                             <br><small><?php echo esc_html(wp_trim_words($video->description, 10)); ?></small>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo esc_html($video->required_value); ?></td>
+                                    <td><?php echo esc_html($video->required_minutes); ?></td>
                                     <td>
-                                        <?php if ($video->bunny_video_id): ?>
+                                        <?php if (!empty($video->bunny_library_id)): ?>
                                             <span class="cpp-integration-badge cpp-bunny">Bunny CDN</span>
                                         <?php endif; ?>
-                                        <?php if ($video->presto_video_id): ?>
+                                        <?php if (!empty($video->presto_player_id)): ?>
                                             <span class="cpp-integration-badge cpp-presto">Presto Player</span>
                                         <?php endif; ?>
-                                        <?php if (!$video->bunny_video_id && !$video->presto_video_id): ?>
+                                        <?php if (empty($video->bunny_library_id) && empty($video->presto_player_id)): ?>
                                             <span class="cpp-integration-badge cpp-direct">Direct URL</span>
                                         <?php endif; ?>
                                     </td>
@@ -377,6 +377,10 @@ function addVideo() {
                         <td><label>Bunny Library ID:</label></td>
                         <td><input type="text" id="bunny_library_id" placeholder="12345" style="width: 100%;"></td>
                     </tr>
+                    <tr id="presto_player_row" style="display: none;">
+                        <td><label>Presto Player ID:</label></td>
+                        <td><input type="text" id="presto_player_id" placeholder="123" style="width: 100%;"></td>
+                    </tr>
                     <tr id="direct_url_row" style="display: none;">
                         <td><label>Direct Video URL:</label></td>
                         <td><input type="url" id="direct_url" placeholder="https://..." style="width: 100%;"></td>
@@ -416,9 +420,11 @@ function addVideo() {
 function toggleIntegrationFields() {
     const integrationType = document.getElementById('integration_type').value;
     const bunnyRow = document.getElementById('bunny_library_row');
+    const prestoRow = document.getElementById('presto_player_row');
     const directRow = document.getElementById('direct_url_row');
     
     bunnyRow.style.display = integrationType === 'bunny' ? 'table-row' : 'none';
+    prestoRow.style.display = integrationType === 'presto' ? 'table-row' : 'none';
     directRow.style.display = integrationType === 'direct' ? 'table-row' : 'none';
 }
 
@@ -436,6 +442,7 @@ function processVideoCreation() {
         required_minutes: document.getElementById('required_minutes').value,
         integration_type: document.getElementById('integration_type').value,
         bunny_library_id: document.getElementById('bunny_library_id').value,
+        presto_player_id: document.getElementById('presto_player_id').value,
         direct_url: document.getElementById('direct_url').value,
         description: document.getElementById('video_description').value,
         status: document.getElementById('video_status').value

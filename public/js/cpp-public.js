@@ -256,6 +256,23 @@
 
             // DRM path removed (using token-based HLS only)
 
+            // Direct URL provider
+            if (meta.provider === 'direct' && meta.url) {
+                var directHtml = '<video controls playsinline preload="metadata" style="width:100%;height:100%">';
+                directHtml += '<source src="' + meta.url + '" type="' + (meta.mime || 'video/mp4') + '">';
+                directHtml += '<p>Your browser does not support the video tag.</p>';
+                directHtml += '</video>';
+                $player.html(directHtml);
+                var directEl = $player.find('video')[0];
+                if (directEl) {
+                    directEl.addEventListener('loadstart', function() { CPP_Public.trackVideoEvent('video_load_start', videoId); });
+                    directEl.addEventListener('play', function() { CPP_Public.trackVideoEvent('video_play', videoId); });
+                    directEl.addEventListener('pause', function() { CPP_Public.trackVideoEvent('video_pause', videoId); });
+                    directEl.addEventListener('ended', function() { CPP_Public.trackVideoEvent('video_ended', videoId); });
+                }
+                return;
+            }
+
             // If server returned a Bunny signed HLS URL, render an HTML5 video with HLS.
             if (meta.provider === 'bunny' && meta.signed_url) {
                 var hlsUrl = meta.signed_url;

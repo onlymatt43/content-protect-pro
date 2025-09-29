@@ -319,34 +319,79 @@ class CPP_Public {
         if ($video_row) {
             $integration_settings = get_option('cpp_integration_settings', array());
             $pref = isset($integration_settings['provider_preference']) ? $integration_settings['provider_preference'] : 'auto';
-            // Decide order: auto and presto -> prefer Presto; bunny -> prefer Bunny
-            $try_presto_first = ($pref === 'presto' || $pref === 'auto');
-
-            $presto_done = false;
-            if ($try_presto_first && !empty($video_row->presto_player_id)) {
-                // Build Presto embed via shortcode
-                $presto_id = intval($video_row->presto_player_id);
-                $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
-                if (!empty($embed_html)) {
-                    $response['provider'] = 'presto';
-                    $response['presto_embed'] = $embed_html;
-                    $presto_done = true;
+            // Per-video override via integration_type
+            $forced = isset($video_row->integration_type) ? strtolower($video_row->integration_type) : '';
+            // Decide order: forced overrides, else auto/preference
+            if ($forced === 'direct') {
+                if (!empty($video_row->direct_url)) {
+                    $response['provider'] = 'direct';
+                    $response['url'] = esc_url($video_row->direct_url);
                 }
+                $provider_set = !empty($response['provider']);
+                // Skip other providers when direct is forced
+            } elseif ($forced === 'presto') {
+                $try_presto_first = true;
+            } elseif ($forced === 'bunny') {
+                $try_presto_first = false;
+            } else {
+                $try_presto_first = ($pref === 'presto' || $pref === 'auto');
             }
 
-            if (!$presto_done && !empty($video_row->bunny_library_id)) {
-                // Generate Bunny signed URL (token-based HLS)
-                if (!class_exists('CPP_Bunny_Integration')) {
-                    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+            if (!isset($provider_set)) {
+                $provider_set = false;
+            }
+            if ($try_presto_first) {
+                // Try Presto first
+                if (!empty($video_row->presto_player_id)) {
+                    $presto_id = intval($video_row->presto_player_id);
+                    $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
+                    if (!empty($embed_html)) {
+                        $response['provider'] = 'presto';
+                        $response['presto_embed'] = $embed_html;
+                        $provider_set = true;
+                    }
                 }
-                $bunny = new CPP_Bunny_Integration();
-                $signed_url = $bunny->generate_signed_url($video_id);
-                if ($signed_url) {
-                    $response['provider'] = 'bunny';
-                    $response['signed_url'] = $signed_url;
-                    $response['mime'] = 'application/x-mpegURL';
+                // Fallback to Bunny
+                if (!$provider_set && !empty($video_row->bunny_library_id)) {
+                    if (!class_exists('CPP_Bunny_Integration')) {
+                        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+                    }
+                    $bunny = new CPP_Bunny_Integration();
+                    $signed_url = $bunny->generate_signed_url($video_id);
+                    if ($signed_url) {
+                        $response['provider'] = 'bunny';
+                        $response['signed_url'] = $signed_url;
+                        $response['mime'] = 'application/x-mpegURL';
+                        $provider_set = true;
+                    }
                 }
             } else {
+                // Try Bunny first
+                if (!empty($video_row->bunny_library_id)) {
+                    if (!class_exists('CPP_Bunny_Integration')) {
+                        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+                    }
+                    $bunny = new CPP_Bunny_Integration();
+                    $signed_url = $bunny->generate_signed_url($video_id);
+                    if ($signed_url) {
+                        $response['provider'] = 'bunny';
+                        $response['signed_url'] = $signed_url;
+                        $response['mime'] = 'application/x-mpegURL';
+                        $provider_set = true;
+                    }
+                }
+                // Fallback to Presto
+                if (!$provider_set && !empty($video_row->presto_player_id)) {
+                    $presto_id = intval($video_row->presto_player_id);
+                    $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
+                    if (!empty($embed_html)) {
+                        $response['provider'] = 'presto';
+                        $response['presto_embed'] = $embed_html;
+                        $provider_set = true;
+                    }
+                }
+            }
+            if (!$provider_set) {
                 $response['provider'] = 'custom';
             }
         }

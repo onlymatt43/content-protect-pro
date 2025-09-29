@@ -133,6 +133,7 @@ function cpp_ajax_create_video() {
         'required_minutes' => intval($video_data['required_minutes']),
         'integration_type' => sanitize_text_field($video_data['integration_type']),
         'bunny_library_id' => sanitize_text_field($video_data['bunny_library_id']),
+        'presto_player_id' => isset($video_data['presto_player_id']) ? sanitize_text_field($video_data['presto_player_id']) : '',
         'direct_url' => esc_url_raw($video_data['direct_url']),
         'description' => sanitize_textarea_field($video_data['description']),
         'status' => sanitize_text_field($video_data['status']),
