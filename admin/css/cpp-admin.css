@@ -1,0 +1,278 @@
+/**
+ * Content Protect Pro - Admin Styles
+ */
+
+.cpp-admin-wrap {
+    margin: 20px 0;
+}
+
+.cpp-admin-header {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.cpp-admin-header h1 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+}
+
+.cpp-admin-header .description {
+    color: #646970;
+    font-size: 14px;
+}
+
+.cpp-admin-tabs {
+    margin-bottom: 20px;
+}
+
+.cpp-admin-tabs ul {
+    display: flex;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: 1px solid #ccd0d4;
+}
+
+.cpp-admin-tabs li {
+    margin-right: 10px;
+}
+
+.cpp-admin-tabs a {
+    display: block;
+    padding: 10px 15px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+}
+
+.cpp-admin-tabs a.active {
+    background: #fff;
+    border-color: #ccd0d4;
+    margin-bottom: -1px;
+}
+
+.cpp-form-table {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+.cpp-form-group {
+    margin-bottom: 20px;
+}
+
+.cpp-form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.cpp-form-group input[type="text"],
+.cpp-form-group input[type="number"],
+.cpp-form-group input[type="email"],
+.cpp-form-group select,
+.cpp-form-group textarea {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px 12px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.cpp-form-group .description {
+    color: #646970;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+.cpp-button {
+    background: #0073aa;
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 13px;
+}
+
+.cpp-button:hover {
+    background: #005177;
+}
+
+.cpp-button.secondary {
+    background: #f7f7f7;
+    color: #50575e;
+    border: 1px solid #8c8f94;
+}
+
+.cpp-button.secondary:hover {
+    background: #fafafa;
+}
+
+.cpp-button.danger {
+    background: #d63638;
+}
+
+.cpp-button.danger:hover {
+    background: #b32d2e;
+}
+
+.cpp-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+
+.cpp-data-table th,
+.cpp-data-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.cpp-data-table th {
+    background: #f6f7f7;
+    font-weight: 600;
+}
+
+.cpp-data-table tbody tr:hover {
+    background: #f6f7f7;
+}
+
+.cpp-status-active {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.cpp-status-inactive {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.cpp-status-expired {
+    color: #dba617;
+    font-weight: 600;
+}
+
+.cpp-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding: 10px 0;
+}
+
+.cpp-pagination .page-numbers {
+    display: flex;
+    gap: 5px;
+}
+
+.cpp-pagination .page-numbers a,
+.cpp-pagination .page-numbers span {
+    padding: 8px 12px;
+    text-decoration: none;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.cpp-pagination .page-numbers .current {
+    background: #0073aa;
+    color: #fff;
+    border-color: #0073aa;
+}
+
+.cpp-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.cpp-stats-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+}
+
+.cpp-stats-card .number {
+    font-size: 32px;
+    font-weight: 600;
+    color: #0073aa;
+    margin-bottom: 5px;
+}
+
+.cpp-stats-card .label {
+    color: #646970;
+    font-size: 14px;
+}
+
+.cpp-notice {
+    border-left: 4px solid #00a32a;
+    background: #fff;
+    padding: 12px;
+    margin: 20px 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.cpp-notice.error {
+    border-left-color: #d63638;
+}
+
+.cpp-notice.warning {
+    border-left-color: #dba617;
+}
+
+.cpp-loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0073aa;
+    border-radius: 50%;
+    animation: cpp-spin 1s linear infinite;
+}
+
+@keyframes cpp-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.cpp-hidden {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .cpp-admin-tabs ul {
+        flex-direction: column;
+    }
+    
+    .cpp-admin-tabs li {
+        margin-right: 0;
+        margin-bottom: 5px;
+    }
+    
+    .cpp-stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .cpp-data-table {
+        font-size: 12px;
+    }
+    
+    .cpp-data-table th,
+    .cpp-data-table td {
+        padding: 8px;
+    }
+}
