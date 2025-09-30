@@ -73,30 +73,23 @@ class Content_Protect_Pro {
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-security.php';
         
-        // Video protection
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
+        // Video protection (simplified - only Presto Player)
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-protection-manager.php';
         
-        // Integrations
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+        // Integrations (only Presto Player)
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-presto-integration.php';
         
         // Analytics and diagnostics
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-diagnostic.php';
         
-        // Advanced features
+        // Basic features
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-encryption.php';
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-ssl-validator.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics-export.php';
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager-advanced.php';
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-settings-advanced.php';
-    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
         
-        // Helper functions (already loaded in main plugin file, but double-check)
-        if (!function_exists('cpp_convert_to_minutes')) {
-            require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
-        }
+        // Helper functions
+        require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
         
         // AJAX handlers
         if (file_exists(CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php')) {

@@ -55,15 +55,8 @@ $security_defaults = array(
 );
 
 $integration_defaults = array(
-    'bunny_enabled' => 0,
-    'bunny_api_key' => '',
-    'bunny_library_id' => '',
-    'bunny_pullzone' => '',
-    'bunny_token_auth_key' => '',
-    'presto_enabled' => 0,
-    'presto_license_key' => '',
-    'provider_preference' => 'auto',
-    'enable_hls_polyfill' => 0
+    'presto_enabled' => 1,
+    'presto_license_key' => ''
 );
 
 $general_settings = wp_parse_args($general_settings, $general_defaults);
@@ -225,57 +218,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                 
             <?php elseif ($active_tab == 'integrations'): ?>
                 <div class="cpp-settings-section">
-                    <h2><?php _e('Bunny CDN Integration', 'content-protect-pro'); ?></h2>
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row"><?php _e('Enable Bunny CDN', 'content-protect-pro'); ?></th>
-                            <td>
-                                <fieldset>
-                                    <label>
-                                        <input type="checkbox" name="cpp_integration_settings[bunny_enabled]" value="1" <?php checked(1, $integration_settings['bunny_enabled']); ?> />
-                                        <?php _e('Enable Bunny CDN video protection', 'content-protect-pro'); ?>
-                                    </label>
-                                    <p class="description"><?php _e('Integrate with Bunny CDN for advanced video protection and DRM.', 'content-protect-pro'); ?></p>
-                                </fieldset>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row"><?php _e('API Key', 'content-protect-pro'); ?></th>
-                            <td>
-                                <input type="password" name="cpp_integration_settings[bunny_api_key]" value="<?php echo esc_attr($integration_settings['bunny_api_key']); ?>" class="regular-text" />
-                                <p class="description"><?php _e('Your Bunny CDN API key. Available in your Bunny dashboard.', 'content-protect-pro'); ?></p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row"><?php _e('Library ID', 'content-protect-pro'); ?></th>
-                            <td>
-                                <input type="text" name="cpp_integration_settings[bunny_library_id]" value="<?php echo esc_attr($integration_settings['bunny_library_id']); ?>" class="regular-text" />
-                                <p class="description"><?php _e('Your Bunny Stream library ID.', 'content-protect-pro'); ?></p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row"><?php _e('Pull Zone URL', 'content-protect-pro'); ?></th>
-                            <td>
-                                <input type="url" name="cpp_integration_settings[bunny_pullzone]" value="<?php echo esc_attr($integration_settings['bunny_pullzone']); ?>" class="regular-text" />
-                                <p class="description"><?php _e('Your Bunny CDN pull zone URL (e.g., https://example.b-cdn.net).', 'content-protect-pro'); ?></p>
-                            </td>
-                        </tr>
-                        
-                        <tr>
-                            <th scope="row"><?php _e('Token Authentication Key', 'content-protect-pro'); ?></th>
-                            <td>
-                                <input type="password" name="cpp_integration_settings[bunny_token_auth_key]" value="<?php echo esc_attr($integration_settings['bunny_token_auth_key']); ?>" class="regular-text" />
-                                <p class="description"><?php _e('Your Bunny Stream token authentication key. Required if token authentication is enabled in your Bunny dashboard (Security settings).', 'content-protect-pro'); ?></p>
-                            </td>
-                        </tr>
-                    </table>
-
-                    
-                    
-                    <h3><?php _e('Presto Player Integration', 'content-protect-pro'); ?></h3>
+                    <h2><?php _e('Presto Player Integration', 'content-protect-pro'); ?></h2>
                     <table class="form-table">
                         <tr>
                             <th scope="row"><?php _e('Enable Presto Player', 'content-protect-pro'); ?></th>
@@ -285,7 +228,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                                         <input type="checkbox" name="cpp_integration_settings[presto_enabled]" value="1" <?php checked(1, $integration_settings['presto_enabled']); ?> />
                                         <?php _e('Enable Presto Player integration', 'content-protect-pro'); ?>
                                     </label>
-                                    <p class="description"><?php _e('Integrate with Presto Player for enhanced video protection.', 'content-protect-pro'); ?></p>
+                                    <p class="description"><?php _e('Integrate with Presto Player for video protection and playback.', 'content-protect-pro'); ?></p>
                                 </fieldset>
                             </td>
                         </tr>
@@ -315,36 +258,27 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                             </td>
                         </tr>
                     </table>
+                    
+                    <h3><?php _e('Video Protection Settings', 'content-protect-pro'); ?></h3>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php _e('How it works', 'content-protect-pro'); ?></th>
+                            <td>
+                                <p class="description">
+                                    <?php _e('This plugin integrates with Presto Player to protect videos with gift codes. Simply:', 'content-protect-pro'); ?>
+                                </p>
+                                <ol>
+                                    <li><?php _e('Create videos in Presto Player with password protection', 'content-protect-pro'); ?></li>
+                                    <li><?php _e('Add gift codes in Content Protect Pro', 'content-protect-pro'); ?></li>
+                                    <li><?php _e('Use the shortcode <code>[cpp_protected_video id="VIDEO_ID" code="GIFT_CODE"]</code> on your pages', 'content-protect-pro'); ?></li>
+                                </ol>
+                                <p class="description">
+                                    <?php _e('The plugin will automatically validate the gift code and display the Presto Player video if valid.', 'content-protect-pro'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
                 </div>
-                
-                <h3><?php _e('Provider Preference', 'content-protect-pro'); ?></h3>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><?php _e('Preferred Provider', 'content-protect-pro'); ?></th>
-                        <td>
-                            <select name="cpp_integration_settings[provider_preference]">
-                                <option value="auto" <?php selected('auto', $integration_settings['provider_preference']); ?>><?php _e('Auto (prefer Presto if available, otherwise Bunny)', 'content-protect-pro'); ?></option>
-                                <option value="presto" <?php selected('presto', $integration_settings['provider_preference']); ?>><?php _e('Prefer Presto embed', 'content-protect-pro'); ?></option>
-                                <option value="bunny" <?php selected('bunny', $integration_settings['provider_preference']); ?>><?php _e('Prefer Bunny signed HLS', 'content-protect-pro'); ?></option>
-                            </select>
-                            <p class="description"><?php _e('When a video has both Presto and Bunny configured, choose which provider to render on the front-end.', 'content-protect-pro'); ?></p>
-                        </td>
-                    </tr>
-                </table>
-
-                <h3><?php _e('Player Compatibility', 'content-protect-pro'); ?></h3>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><?php _e('Enable HLS.js Polyfill', 'content-protect-pro'); ?></th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="cpp_integration_settings[enable_hls_polyfill]" value="1" <?php checked(1, !empty($integration_settings['enable_hls_polyfill'])); ?> />
-                                <?php _e('Load HLS.js to support Bunny HLS in non-Safari browsers', 'content-protect-pro'); ?>
-                            </label>
-                            <p class="description"><?php _e('Recommended for Chrome/Firefox if using Bunny signed HLS. Adds a small script to enable HLS playback.', 'content-protect-pro'); ?></p>
-                        </td>
-                    </tr>
-                </table>
 
             <?php elseif ($active_tab == 'advanced'): ?>
                 <div class="cpp-settings-section">

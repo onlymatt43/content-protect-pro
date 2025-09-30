@@ -59,27 +59,11 @@ class CPP_Public {
      * @since 1.0.0
      */
     public function enqueue_scripts() {
-        // Determine integration settings first to set script dependencies/order
-        $integration_settings = get_option('cpp_integration_settings', array());
-        $enable_hls = !empty($integration_settings['enable_hls_polyfill']);
-        $pref = isset($integration_settings['provider_preference']) ? $integration_settings['provider_preference'] : 'auto';
-        $deps = array('jquery');
-        if ($enable_hls) {
-            wp_enqueue_script(
-                'hls-js',
-                'https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js',
-                array(),
-                '1.5.7',
-                true
-            );
-            $deps[] = 'hls-js';
-        }
-
-        // Enqueue main public script after its dependencies, in footer to avoid race conditions
+        // Enqueue main public script
         wp_enqueue_script(
             $this->plugin_name,
             CPP_PLUGIN_URL . 'public/js/cpp-public.js',
-            $deps,
+            array('jquery'),
             $this->version,
             true
         );
@@ -96,8 +80,7 @@ class CPP_Public {
                     'used_code' => __('This gift code has already been used.', 'content-protect-pro'),
                     'loading' => __('Loading...', 'content-protect-pro'),
                     'error' => __('An error occurred. Please try again.', 'content-protect-pro'),
-                ),
-                'hls_enabled' => (bool) $enable_hls
+                )
             )
         );
     }
@@ -155,56 +138,32 @@ class CPP_Public {
      */
     public function protected_video_shortcode($atts) {
         $atts = shortcode_atts(array(
-            'video_id' => '',
-            'require_giftcode' => false,
-            'allowed_codes' => '',
-            'player_type' => 'bunny',
+            'id' => '', // Presto Player video ID
+            'code' => '', // Required gift code
             'width' => '100%',
             'height' => '400px',
         ), $atts, 'cpp_protected_video');
 
-        if (empty($atts['video_id'])) {
-            return '<p>' . __('Video ID is required.', 'content-protect-pro') . '</p>';
+        if (empty($atts['id'])) {
+            return '<p>' . __('Presto Player video ID is required.', 'content-protect-pro') . '</p>';
         }
 
         // Check if gift code is required and validate
-        if ($atts['require_giftcode']) {
+        if (!empty($atts['code'])) {
             if (!session_id()) {
                 session_start();
             }
             $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
-            $allowed_codes = !empty($atts['allowed_codes']) ? explode(',', $atts['allowed_codes']) : array();
-            
-            $has_valid_code = false;
-            if (!empty($allowed_codes)) {
-                foreach ($session_codes as $code) {
-                    if (in_array($code, $allowed_codes)) {
-                        $has_valid_code = true;
-                        break;
-                    }
-                }
-            } else {
-                $has_valid_code = !empty($session_codes);
-            }
 
-            if (!$has_valid_code) {
-                return '<div class="cpp-protected-content">' . 
-                       __('A valid gift code is required to access this video.', 'content-protect-pro') . 
+            if (!in_array($atts['code'], $session_codes)) {
+                return '<div class="cpp-protected-content">' .
+                       __('A valid gift code is required to access this video.', 'content-protect-pro') .
                        '</div>';
             }
         }
 
-        // Generate video player based on type
-        ob_start();
-        ?>
-        <div class="cpp-video-container" data-video-id="<?php echo esc_attr($atts['video_id']); ?>">
-            <div id="cpp-video-<?php echo esc_attr($atts['video_id']); ?>" 
-                 style="width: <?php echo esc_attr($atts['width']); ?>; height: <?php echo esc_attr($atts['height']); ?>;">
-                <?php _e('Loading video...', 'content-protect-pro'); ?>
-            </div>
-        </div>
-        <?php
-        return ob_get_clean();
+        // Simply return Presto Player shortcode
+        return do_shortcode('[presto_player id="' . intval($atts['id']) . '"]');
     }
 
     /**
