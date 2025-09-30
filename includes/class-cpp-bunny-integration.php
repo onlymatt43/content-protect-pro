@@ -38,11 +38,11 @@ class CPP_Bunny_Integration {
     private $api_key;
 
     /**
-     * Library ID for Bunny Stream
+     * Token authentication key for signed URLs
      *
      * @var string
      */
-    private $library_id;
+    private $token_auth_key;
 
     /**
      * Initialize the integration
@@ -61,6 +61,14 @@ class CPP_Bunny_Integration {
         }
 
         $this->library_id = isset($integration_settings['bunny_library_id']) ? $integration_settings['bunny_library_id'] : '';
+        
+        // Get token auth key from settings or decrypt if encrypted
+        $token_auth_key = isset($integration_settings['bunny_token_auth_key']) ? $integration_settings['bunny_token_auth_key'] : '';
+        if (!empty($token_auth_key) && class_exists('CPP_Encryption')) {
+            $this->token_auth_key = CPP_Encryption::decrypt($token_auth_key);
+        } else {
+            $this->token_auth_key = $token_auth_key;
+        }
     }
 
     /**
@@ -133,10 +141,13 @@ class CPP_Bunny_Integration {
         }
 
         // Generate authentication token
-        $token_auth_key = !empty($options['token_auth_key']) ? $options['token_auth_key'] : $video_info['library']['tokenAuthenticationKey'];
+        // Use manually configured token key first, then fallback to API-provided key
+        $token_auth_key = !empty($this->token_auth_key) ? $this->token_auth_key : 
+                         (!empty($options['token_auth_key']) ? $options['token_auth_key'] : 
+                         (isset($video_info['library']['tokenAuthenticationKey']) ? $video_info['library']['tokenAuthenticationKey'] : ''));
         
         if (empty($token_auth_key)) {
-            error_log('CPP Bunny Integration: Token authentication key not found');
+            error_log('CPP Bunny Integration: Token authentication key not found. Please configure it in Content Protect Pro settings if token authentication is enabled in Bunny Stream.');
             return false;
         }
 

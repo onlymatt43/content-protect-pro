@@ -59,6 +59,7 @@ $integration_defaults = array(
     'bunny_api_key' => '',
     'bunny_library_id' => '',
     'bunny_pullzone' => '',
+    'bunny_token_auth_key' => '',
     'presto_enabled' => 0,
     'presto_license_key' => '',
     'provider_preference' => 'auto',
@@ -260,6 +261,14 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                             <td>
                                 <input type="url" name="cpp_integration_settings[bunny_pullzone]" value="<?php echo esc_attr($integration_settings['bunny_pullzone']); ?>" class="regular-text" />
                                 <p class="description"><?php _e('Your Bunny CDN pull zone URL (e.g., https://example.b-cdn.net).', 'content-protect-pro'); ?></p>
+                            </td>
+                        </tr>
+                        
+                        <tr>
+                            <th scope="row"><?php _e('Token Authentication Key', 'content-protect-pro'); ?></th>
+                            <td>
+                                <input type="password" name="cpp_integration_settings[bunny_token_auth_key]" value="<?php echo esc_attr($integration_settings['bunny_token_auth_key']); ?>" class="regular-text" />
+                                <p class="description"><?php _e('Your Bunny Stream token authentication key. Required if token authentication is enabled in your Bunny dashboard (Security settings).', 'content-protect-pro'); ?></p>
                             </td>
                         </tr>
                     </table>
