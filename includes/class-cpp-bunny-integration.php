@@ -50,17 +50,17 @@ class CPP_Bunny_Integration {
      * @since 1.0.0
      */
     public function __construct() {
-        $settings = get_option('cpp_bunny_settings', array());
-        
+        $integration_settings = get_option('cpp_integration_settings', array());
+
         // Decrypt API key if encrypted
-        $api_key = isset($settings['api_key']) ? $settings['api_key'] : '';
+        $api_key = isset($integration_settings['bunny_api_key']) ? $integration_settings['bunny_api_key'] : '';
         if (!empty($api_key) && class_exists('CPP_Encryption')) {
             $this->api_key = CPP_Encryption::decrypt($api_key);
         } else {
             $this->api_key = $api_key;
         }
-        
-        $this->library_id = isset($settings['library_id']) ? $settings['library_id'] : '';
+
+        $this->library_id = isset($integration_settings['bunny_library_id']) ? $integration_settings['bunny_library_id'] : '';
     }
 
     /**

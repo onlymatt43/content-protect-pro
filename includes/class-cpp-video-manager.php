@@ -128,10 +128,9 @@ class CPP_Video_Manager {
         
         $data_sql = "SELECT * FROM $table_name $where_sql $order_sql $limit_sql";
         if (!empty($prepare_values)) {
-            $data_values = array_merge($prepare_values, array($offset, $args['per_page']));
             $data_sql = $wpdb->prepare(
                 "SELECT * FROM $table_name $where_sql $order_sql LIMIT %d, %d",
-                ...$data_values
+                array_merge($prepare_values, array($offset, $args['per_page']))
             );
         }
         
