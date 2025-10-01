@@ -70,91 +70,93 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
         
         <!-- Videos List -->
         <div class="cpp-videos-list">
-            <h3><?php _e('Protected Videos', 'content-protect-pro'); ?></h3>
+            <h3><?php _e('Presto Player Videos', 'content-protect-pro'); ?></h3>
+            <p><?php _e('Configure access requirements for your existing Presto Player videos. No duplication needed!', 'content-protect-pro'); ?></p>
             
-            <?php if ($video_manager): ?>
-                <?php
-                // Get videos from database
-                global $wpdb;
-                $table_name = $wpdb->prefix . 'cpp_protected_videos';
-                $videos = $wpdb->get_results("SELECT * FROM {$table_name} ORDER BY created_at DESC LIMIT 20");
-                ?>
+            <?php
+            // Get Presto Player videos directly
+            if (function_exists('presto_player_get_videos')) {
+                $presto_videos = presto_player_get_videos(array('posts_per_page' => 50));
                 
-                <?php if ($videos): ?>
+                if ($presto_videos && !empty($presto_videos->posts)): ?>
                     <table class="wp-list-table widefat fixed striped">
                         <thead>
                             <tr>
                                 <th><?php _e('Video ID', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Title', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Required Minutes', 'content-protect-pro'); ?></th>
-                                <th><?php _e('Integration', 'content-protect-pro'); ?></th>
-                                <th><?php _e('Status', 'content-protect-pro'); ?></th>
-                                <th><?php _e('Usage', 'content-protect-pro'); ?></th>
+                                <th><?php _e('Protection Status', 'content-protect-pro'); ?></th>
                                 <th><?php _e('Actions', 'content-protect-pro'); ?></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($videos as $video): ?>
+                            <?php foreach ($presto_videos->posts as $video): 
+                                $required_minutes = get_post_meta($video->ID, '_cpp_required_minutes', true) ?: 0;
+                                $is_protected = $required_minutes > 0;
+                            ?>
                                 <tr>
-                                    <td><?php echo esc_html($video->video_id); ?></td>
+                                    <td><?php echo esc_html($video->ID); ?></td>
                                     <td>
-                                        <strong><?php echo esc_html($video->title); ?></strong>
-                                        <?php if ($video->description): ?>
-                                            <br><small><?php echo esc_html(wp_trim_words($video->description, 10)); ?></small>
+                                        <strong><?php echo esc_html($video->post_title); ?></strong>
+                                        <?php if ($video->post_excerpt): ?>
+                                            <br><small><?php echo esc_html(wp_trim_words($video->post_excerpt, 10)); ?></small>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo esc_html($video->required_minutes); ?></td>
                                     <td>
-                                        <?php if (!empty($video->presto_player_id)): ?>
-                                            <span class="cpp-integration-badge cpp-presto">Presto Player</span>
-                                        <?php elseif (!empty($video->direct_url)): ?>
-                                            <span class="cpp-integration-badge cpp-direct">Direct URL</span>
+                                        <input type="number" 
+                                               value="<?php echo esc_attr($required_minutes); ?>" 
+                                               min="0" 
+                                               style="width: 80px;"
+                                               onchange="updateVideoMinutes(<?php echo esc_js($video->ID); ?>, this.value)">
+                                        <small><?php _e('minutes', 'content-protect-pro'); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php if ($is_protected): ?>
+                                            <span class="cpp-status-active">✓ <?php _e('Protected', 'content-protect-pro'); ?></span>
                                         <?php else: ?>
-                                            <span class="cpp-integration-badge cpp-none">Non configuré</span>
+                                            <span class="cpp-status-inactive"><?php _e('Unprotected', 'content-protect-pro'); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <span class="cpp-status-<?php echo esc_attr($video->status); ?>">
-                                            <?php echo esc_html(ucfirst($video->status)); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <?php echo intval($video->usage_count); ?>
-                                        <?php if ($video->max_uses): ?>
-                                            / <?php echo intval($video->max_uses); ?>
+                                        <a href="<?php echo get_edit_post_link($video->ID); ?>" target="_blank" class="button button-small">
+                                            <?php _e('Edit in Presto', 'content-protect-pro'); ?>
+                                        </a>
+                                        <?php if ($is_protected): ?>
+                                            <button class="button button-small" onclick="generateShortcode(<?php echo esc_js($video->ID); ?>)">
+                                                <?php _e('Get Shortcode', 'content-protect-pro'); ?>
+                                            </button>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <a href="#" onclick="editVideo(<?php echo esc_js($video->id); ?>)" class="button button-small">
-                                            <?php _e('Edit', 'content-protect-pro'); ?>
-                                        </a>
-                                        <a href="#" onclick="deleteVideo(<?php echo esc_js($video->id); ?>)" class="button button-small cpp-delete">
-                                            <?php _e('Delete', 'content-protect-pro'); ?>
-                                        </a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                    
+                    <div class="cpp-shortcode-info" style="margin-top: 20px; padding: 15px; background: #f1f1f1; border-radius: 4px;">
+                        <h4><?php _e('How to Use Protected Videos', 'content-protect-pro'); ?></h4>
+                        <p><?php _e('Once you set required minutes > 0, use this shortcode in your posts/pages:', 'content-protect-pro'); ?></p>
+                        <code style="background: #fff; padding: 5px; display: block; margin: 10px 0;">[cpp_protected_video id="VIDEO_ID" code="GIFT_CODE"]</code>
+                        <p><em><?php _e('Replace VIDEO_ID with the Presto Player video ID and GIFT_CODE with a valid gift code.', 'content-protect-pro'); ?></em></p>
+                    </div>
                 <?php else: ?>
                     <div class="cpp-no-videos">
                         <div class="cpp-empty-state">
                             <div class="cpp-empty-icon">
                                 <span class="dashicons dashicons-video-alt3"></span>
                             </div>
-                            <h3><?php _e('No Protected Videos Yet', 'content-protect-pro'); ?></h3>
-                            <p><?php _e('Start protecting your video content by adding your first protected video.', 'content-protect-pro'); ?></p>
-                            <button class="button button-primary button-large" onclick="addVideo()">
-                                <?php _e('Add Your First Video', 'content-protect-pro'); ?>
-                            </button>
+                            <h3><?php _e('No Presto Player Videos Found', 'content-protect-pro'); ?></h3>
+                            <p><?php _e('Create some videos in Presto Player first, then come back here to protect them.', 'content-protect-pro'); ?></p>
+                            <a href="<?php echo admin_url('edit.php?post_type=pp_video_block'); ?>" class="button button-primary button-large" target="_blank">
+                                <?php _e('Create Videos in Presto Player', 'content-protect-pro'); ?>
+                            </a>
                         </div>
                     </div>
-                <?php endif; ?>
-            <?php else: ?>
+                <?php endif;
+            } else { ?>
                 <div class="notice notice-error">
-                    <p><?php _e('Video manager not available. Please check plugin installation.', 'content-protect-pro'); ?></p>
+                    <p><?php _e('Presto Player functions not available. Please ensure Presto Player is installed and active.', 'content-protect-pro'); ?></p>
                 </div>
-            <?php endif; ?>
+            <?php } ?>
         </div>
         
         <!-- Quick Setup Guide -->
@@ -322,114 +324,13 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
 </style>
 
 <script>
-function addVideo() {
-    // Create modal for adding video
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-        background: rgba(0,0,0,0.5); z-index: 9999; display: flex; 
-        align-items: center; justify-content: center; overflow-y: auto;
-    `;
-    
-    modal.innerHTML = `
-        <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90%; overflow-y: auto;">
-            <h3>Add Protected Video</h3>
-            <form id="addVideoForm">
-                <table style="width: 100%;">
-                    <tr>
-                        <td style="width: 30%;"><label><strong>Video ID:</strong></label></td>
-                        <td><input type="text" id="video_id" placeholder="bunny-video-guid-or-youtube-id" style="width: 100%;" required></td>
-                    </tr>
-                    <tr>
-                        <td><label><strong>Title:</strong></label></td>
-                        <td><input type="text" id="video_title" placeholder="Video Title" style="width: 100%;" required></td>
-                    </tr>
-                    <tr>
-                        <td><label><strong>Required Access (Minutes):</strong></label></td>
-                        <td><input type="number" id="required_minutes" placeholder="60" min="1" style="width: 100%;" required></td>
-                    </tr>
-                    <tr>
-                        <td><label><strong>Integration:</strong></label></td>
-                        <td>
-                            <select id="integration_type" style="width: 100%;" onchange="toggleIntegrationFields()">
-                                <option value="presto">Presto Player</option>
-                                <option value="direct">Direct URL</option>
-                            </select>
-                        </td>
-                    </tr>
-                    <tr id="presto_player_row">
-                        <td><label>Presto Player ID:</label></td>
-                        <td><input type="text" id="presto_player_id" placeholder="123" style="width: 100%;"></td>
-                    </tr>
-                    <tr id="direct_url_row" style="display: none;">
-                        <td><label>Direct Video URL:</label></td>
-                        <td><input type="url" id="direct_url" placeholder="https://..." style="width: 100%;"></td>
-                    </tr>
-                    <tr>
-                        <td><label>Description:</label></td>
-                        <td><textarea id="video_description" rows="3" style="width: 100%;" placeholder="Optional description"></textarea></td>
-                    </tr>
-                    <tr>
-                        <td><label>Status:</label></td>
-                        <td>
-                            <select id="video_status" style="width: 100%;">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </td>
-                    </tr>
-                </table>
-                <div style="margin-top: 20px; text-align: right;">
-                    <button type="button" onclick="closeVideoModal()" style="margin-right: 10px;">Cancel</button>
-                    <button type="submit" style="background: #0073aa; color: white; border: none; padding: 8px 16px;">Add Video</button>
-                </div>
-            </form>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    window.videoModal = modal;
-    
-    // Handle form submission
-    document.getElementById('addVideoForm').onsubmit = function(e) {
-        e.preventDefault();
-        processVideoCreation();
-    };
-}
-
-function toggleIntegrationFields() {
-    const integrationType = document.getElementById('integration_type').value;
-    const prestoRow = document.getElementById('presto_player_row');
-    const directRow = document.getElementById('direct_url_row');
-    
-    prestoRow.style.display = integrationType === 'presto' ? 'table-row' : 'none';
-    directRow.style.display = integrationType === 'direct' ? 'table-row' : 'none';
-}
-
-function closeVideoModal() {
-    if (window.videoModal) {
-        document.body.removeChild(window.videoModal);
-        window.videoModal = null;
-    }
-}
-
-function processVideoCreation() {
-    const videoData = {
-        video_id: document.getElementById('video_id').value,
-        title: document.getElementById('video_title').value,
-        required_minutes: document.getElementById('required_minutes').value,
-        integration_type: document.getElementById('integration_type').value,
-        presto_player_id: document.getElementById('presto_player_id').value,
-        direct_url: document.getElementById('direct_url').value,
-        description: document.getElementById('video_description').value,
-        status: document.getElementById('video_status').value
-    };
-    
-    // Send AJAX request to create video
+function updateVideoMinutes(videoId, minutes) {
+    // Update the required minutes for a video via AJAX
     const formData = new FormData();
-    formData.append('action', 'cpp_create_video');
-    formData.append('video_data', JSON.stringify(videoData));
-    formData.append('nonce', '<?php echo wp_create_nonce("cpp_create_video"); ?>');
+    formData.append('action', 'cpp_update_video_minutes');
+    formData.append('video_id', videoId);
+    formData.append('minutes', minutes);
+    formData.append('nonce', '<?php echo wp_create_nonce("cpp_update_video_minutes"); ?>');
     
     fetch(ajaxurl, {
         method: 'POST',
@@ -438,38 +339,73 @@ function processVideoCreation() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Video created successfully!');
-            location.reload();
+            // Update the protection status
+            const row = event.target.closest('tr');
+            const statusCell = row.querySelector('td:nth-child(4)');
+            if (parseInt(minutes) > 0) {
+                statusCell.innerHTML = '<span class="cpp-status-active">✓ <?php echo esc_js(__("Protected", "content-protect-pro")); ?></span>';
+            } else {
+                statusCell.innerHTML = '<span class="cpp-status-inactive"><?php echo esc_js(__("Unprotected", "content-protect-pro")); ?></span>';
+            }
+            
+            // Show shortcode button if protected
+            const actionsCell = row.querySelector('td:nth-child(5)');
+            const shortcodeBtn = actionsCell.querySelector('button[onclick*="generateShortcode"]');
+            if (parseInt(minutes) > 0 && !shortcodeBtn) {
+                const newBtn = document.createElement('button');
+                newBtn.className = 'button button-small';
+                newBtn.onclick = () => generateShortcode(videoId);
+                newBtn.innerHTML = '<?php echo esc_js(__("Get Shortcode", "content-protect-pro")); ?>';
+                actionsCell.appendChild(document.createElement('br'));
+                actionsCell.appendChild(newBtn);
+            } else if (parseInt(minutes) === 0 && shortcodeBtn) {
+                shortcodeBtn.remove();
+            }
         } else {
-            alert('Error: ' + (data.message || 'Failed to create video'));
+            alert('<?php echo esc_js(__("Error updating video settings", "content-protect-pro")); ?>: ' + (data.message || 'Unknown error'));
+            // Reset the input value
+            event.target.value = event.target.defaultValue;
         }
-        closeVideoModal();
     })
     .catch(error => {
-        alert('Network error: ' + error.message);
-        closeVideoModal();
+        alert('<?php echo esc_js(__("Network error", "content-protect-pro")); ?>: ' + error.message);
+        // Reset the input value
+        event.target.value = event.target.defaultValue;
     });
 }
 
+function generateShortcode(videoId) {
+    const shortcode = `[cpp_protected_video id="${videoId}" code="YOUR_GIFT_CODE"]`;
+    
+    // Copy to clipboard if possible
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(shortcode).then(() => {
+            alert('<?php echo esc_js(__("Shortcode copied to clipboard!", "content-protect-pro")); ?>\n\n' + shortcode);
+        });
+    } else {
+        // Fallback: show in prompt
+        prompt('<?php echo esc_js(__("Copy this shortcode:", "content-protect-pro")); ?>', shortcode);
+    }
+}
+
+// Remove old functions that are no longer needed
+function addVideo() {
+    alert('<?php echo esc_js(__("No longer needed! Just set minutes > 0 for any Presto Player video above.", "content-protect-pro")); ?>');
+}
+
 function editVideo(videoId) {
-    // This would open edit modal or redirect to edit page
-    alert('<?php _e('Edit Video functionality coming soon!', 'content-protect-pro'); ?>\n<?php _e('Video ID:', 'content-protect-pro'); ?> ' + videoId);
+    alert('<?php echo esc_js(__("Use the Edit in Presto button to modify video details.", "content-protect-pro")); ?>');
 }
 
 function deleteVideo(videoId) {
-    if (!confirm('<?php _e('Are you sure you want to delete this video?', 'content-protect-pro'); ?>')) {
-        return;
-    }
-    
-    // This would make AJAX call to delete video
-    alert('<?php _e('Delete Video functionality coming soon!', 'content-protect-pro'); ?>\n<?php _e('Video ID:', 'content-protect-pro'); ?> ' + videoId);
+    alert('<?php echo esc_js(__("Delete videos directly in Presto Player.", "content-protect-pro")); ?>');
 }
 
 function bulkImport() {
-    alert('<?php _e('Bulk Import functionality coming soon!', 'content-protect-pro'); ?>');
+    alert('<?php echo esc_js(__("Not needed - all Presto Player videos are automatically available.", "content-protect-pro")); ?>');
 }
 
 function exportVideos() {
-    alert('<?php _e('Export functionality coming soon!', 'content-protect-pro'); ?>');
+    alert('<?php echo esc_js(__("Export functionality coming soon!", "content-protect-pro")); ?>');
 }
 </script>

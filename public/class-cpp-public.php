@@ -130,7 +130,7 @@ class CPP_Public {
     }
 
     /**
-     * Protected video shortcode
+     * Protected video shortcode - displays Presto Player video with gift code protection
      *
      * @param array $atts Shortcode attributes
      * @return string
@@ -148,22 +148,55 @@ class CPP_Public {
             return '<p>' . __('Presto Player video ID is required.', 'content-protect-pro') . '</p>';
         }
 
-        // Check if gift code is required and validate
-        if (!empty($atts['code'])) {
+        $video_id = intval($atts['id']);
+        
+        // Check if this is a valid Presto Player video
+        $post = get_post($video_id);
+        if (!$post || $post->post_type !== 'pp_video_block') {
+            return '<p>' . __('Invalid video ID. Please check that this is a valid Presto Player video.', 'content-protect-pro') . '</p>';
+        }
+        
+        // Check if video requires gift code protection
+        $required_minutes = get_post_meta($video_id, '_cpp_required_minutes', true) ?: 0;
+        $requires_code = $required_minutes > 0;
+        
+        // If video requires gift code, validate it
+        if ($requires_code) {
+            if (empty($atts['code'])) {
+                return '<div class="cpp-protected-content">' .
+                       sprintf(__('This video requires a gift code with at least %d minutes of access.', 'content-protect-pro'), $required_minutes) .
+                       '<br>' . __('Use: [cpp_protected_video id="' . $video_id . '" code="YOUR_CODE"]', 'content-protect-pro') .
+                       '</div>';
+            }
+            
+            // Validate the gift code
             if (!session_id()) {
                 session_start();
             }
             $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
 
             if (!in_array($atts['code'], $session_codes)) {
-                return '<div class="cpp-protected-content">' .
-                       __('A valid gift code is required to access this video.', 'content-protect-pro') .
-                       '</div>';
+                // Load gift code manager to validate
+                require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
+                $giftcode_manager = new CPP_Giftcode_Manager();
+                $validation = $giftcode_manager->validate_code($atts['code']);
+                
+                if (!$validation['valid']) {
+                    return '<div class="cpp-protected-content">' .
+                           __('Invalid or expired gift code.', 'content-protect-pro') .
+                           '</div>';
+                }
+                
+                // Code is valid, add to session
+                if (!isset($_SESSION['cpp_validated_codes'])) {
+                    $_SESSION['cpp_validated_codes'] = array();
+                }
+                $_SESSION['cpp_validated_codes'][] = $atts['code'];
             }
         }
 
-        // Simply return Presto Player shortcode
-        return do_shortcode('[presto_player id="' . intval($atts['id']) . '"]');
+        // Video is accessible, return Presto Player shortcode
+        return do_shortcode('[presto_player id="' . $video_id . '"]');
     }
 
     /**

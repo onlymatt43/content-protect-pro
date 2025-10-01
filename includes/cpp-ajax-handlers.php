@@ -191,7 +191,45 @@ function cpp_ajax_delete_video() {
     }
 }
 
+/**
+ * Handle updating required minutes for Presto Player videos
+ */
+function cpp_ajax_update_video_minutes() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['nonce'], 'cpp_update_video_minutes')) {
+        wp_send_json_error('Security check failed');
+    }
+    
+    // Check user capabilities
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    $video_id = intval($_POST['video_id']);
+    $minutes = intval($_POST['minutes']);
+    
+    if (!$video_id || $minutes < 0) {
+        wp_send_json_error('Invalid video ID or minutes value');
+    }
+    
+    // Verify this is a Presto Player video
+    $post = get_post($video_id);
+    if (!$post || $post->post_type !== 'pp_video_block') {
+        wp_send_json_error('Invalid Presto Player video');
+    }
+    
+    // Update the meta field
+    $result = update_post_meta($video_id, '_cpp_required_minutes', $minutes);
+    
+    if ($result !== false) {
+        wp_send_json_success('Video minutes updated successfully');
+    } else {
+        wp_send_json_error('Failed to update video minutes');
+    }
+}
+
 // Register AJAX handlers
 add_action('wp_ajax_cpp_bulk_create_codes', 'cpp_ajax_bulk_create_codes');
 add_action('wp_ajax_cpp_create_video', 'cpp_ajax_create_video');
 add_action('wp_ajax_cpp_delete_video', 'cpp_ajax_delete_video');
+add_action('wp_ajax_cpp_update_video_minutes', 'cpp_ajax_update_video_minutes');
