@@ -38,13 +38,11 @@
 - ✅ Limitations d'usage
 - ✅ Expiration automatique
 
-### 🎬 **Protection Vidéos - TERMINÉ**
-- ✅ Tokens JWT sécurisés
-- ✅ Intégration Bunny CDN complète
-- ✅ Intégration Presto Player
-- ✅ URLs signées avec SHA256
-- ✅ Restriction IP
-- ✅ Niveaux de protection multiples
+### 🎬 **Protection Vidéos - SIMPLIFIÉ**
+- ✅ Intégration Presto Player uniquement
+- ✅ Protection par codes cadeaux
+- ✅ Session-based access control
+- ✅ Shortcode-based embedding
 
 ### 📊 **Analytics - TERMINÉ**
 - ✅ Tracking complet des événements
@@ -88,26 +86,15 @@ $exporter->email_report('admin@site.com', [
 ]);
 ```
 
-### 🎬 **Gestion Vidéos Avancée**
+### 🎬 **Gestion Vidéos Simplifiée**
 ```php
-// Suppression sécurisée
-$video_manager = new CPP_Video_Manager_Advanced();
-$result = $video_manager->delete_video(123, true); // Supprime aussi de Bunny
-
-// Import CSV en masse
-$import_result = $video_manager->bulk_import_csv('/path/to/videos.csv', [
-    'update_existing' => true,
-    'skip_duplicates' => false
+// Gestion simple des vidéos Presto Player
+$video_manager = new CPP_Video_Manager();
+$result = $video_manager->add_video([
+    'title' => 'Ma Vidéo',
+    'presto_player_id' => 123,
+    'requires_giftcode' => true
 ]);
-
-// Export pour backup
-$csv_export = $video_manager->export_videos_csv([
-    'status' => 'active',
-    'protection_level' => 'protected'
-]);
-
-// Statistiques détaillées
-$stats = $video_manager->get_video_statistics('video-123');
 ```
 
 ### ⚙️ **Settings Management Pro**
@@ -179,14 +166,12 @@ content-protect-pro/
 3. ✅ Configuration Bunny CDN (optionnel)
 4. ✅ Configuration Presto Player (optionnel)
 
-### ⚙️ **Configuration Bunny CDN**
+### ⚙️ **Configuration Presto Player**
 ```php
 // Dans l'admin WordPress
 Settings > Content Protect Pro > Integrations
-- API Key: [Votre clé API Bunny]
-- Library ID: [ID de votre librairie]
-- Pull Zone URL: [URL de votre pull zone]
-- DRM Enabled: [Oui/Non]
+- Enable Presto Player: [Oui]
+- License Key: [Votre clé Presto Player - optionnel]
 ```
 
 ---
@@ -223,14 +208,14 @@ Settings > Content Protect Pro > Integrations
 
 ## 🎯 **RÉSUMÉ EXÉCUTIF**
 
-### ✅ **MISSION ACCOMPLIE**
+### ✅ **MISSION ACCOMPLIE - VERSION SIMPLIFIÉE**
 Le plugin **Content Protect Pro** est **100% COMPLET** et **prêt pour production** avec:
 
 - 🔒 **Sécurité de niveau enterprise**
-- 🚀 **Performances optimisées** 
-- 🎯 **Toutes fonctionnalités demandées**
-- 📚 **Documentation complète**
-- 🛠️ **Outils d'administration avancés**
+- 🚀 **Architecture simplifiée et performante**
+- 🎯 **Fonctionnalités essentielles préservées**
+- 📚 **Documentation mise à jour**
+- 🛠️ **Focus sur Presto Player uniquement**
 
 ### 🚀 **PRÊT POUR DÉPLOIEMENT**
 - ✅ Code testé et validé

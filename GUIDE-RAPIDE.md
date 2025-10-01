@@ -9,11 +9,10 @@ Content Protect Pro est un plugin WordPress qui protège vos contenus (codes cad
 - Allez dans **Extensions > Extensions installées**
 - Activez **Content Protect Pro**
 
-### 2. Configuration des intégrations
-- Allez dans **Content Protect Pro > Paramètres**
-- Configurez **Bunny CDN** ou **Presto Player** :
-  - Pour Bunny : Entrez votre API Key et Library ID
-  - Pour Presto : Configurez l'intégration Presto Player
+### 2. Configuration de Presto Player
+- Installez et activez **Presto Player Pro** depuis WordPress.org
+- Allez dans **Content Protect Pro > Settings > Integrations**
+- Cochez "Enable Presto Player integration"
 
 ### 3. Ajout de contenu
 
@@ -23,9 +22,13 @@ Content Protect Pro est un plugin WordPress qui protège vos contenus (codes cad
 - Remplissez : Code, Description, Nombre d'utilisations max
 
 #### Vidéos
-- Allez dans **Content Protect Pro > Vidéos**
-- Cliquez sur **Ajouter nouveau**
-- Remplissez : Titre, URL Bunny/Presto, Description
+- **Créez d'abord dans Presto Player :**
+  - Allez dans **Presto Player > Videos**
+  - Ajoutez vos vidéos avec protection par mot de passe
+- **Ajoutez dans Content Protect Pro :**
+  - Allez dans **Content Protect Pro > Protected Videos**
+  - Cliquez **"Add New Video"**
+  - Entrez l'ID Presto Player et le titre
 
 ## 🎯 Utilisation des shortcodes
 
@@ -77,9 +80,10 @@ Content Protect Pro est un plugin WordPress qui protège vos contenus (codes cad
 - ✅ Classes PHP chargées ?
 
 ### Les vidéos ne se chargent pas
-- ✅ Intégration configurée ?
-- ✅ Vidéos ajoutées dans l'admin ?
-- ✅ Code cadeau valide ?
+- ✅ Presto Player installé et activé ?
+- ✅ Intégration activée dans les settings ?
+- ✅ Vidéos créées dans Presto Player d'abord ?
+- ✅ IDs Presto Player corrects dans Content Protect Pro ?
 
 ### Erreurs JavaScript
 - Vérifiez la console du navigateur (F12)

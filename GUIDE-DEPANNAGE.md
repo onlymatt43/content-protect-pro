@@ -42,21 +42,16 @@ Voici les étapes pour diagnostiquer et résoudre les problèmes courants.
 
 ---
 
-### ❌ **Problème 3: Aucune intégration configurée**
-**Symptômes:** Impossible d'ajouter des vidéos, message "Integration not configured"
+### ❌ **Problème 3: Presto Player non configuré**
+**Symptômes:** Impossible d'ajouter des vidéos, message "Presto Player not active"
 
 **Solution:**
-1. Allez dans **Content Protect Pro > Settings > Integrations**
-2. Configurez **Bunny CDN** OU **Presto Player**
-
-**Pour Bunny CDN:**
-- Obtenez API Key et Library ID sur bunny.net
-- Entrez-les dans les champs
-- Cochez "Enable Bunny CDN"
-
-**Pour Presto Player:**
-- Installez et activez "Presto Player Pro"
-- Cochez "Enable Presto Player integration"
+1. Allez dans **Extensions > Extensions installées**
+2. Cherchez "Presto Player"
+3. S'il n'est pas installé : **Ajouter nouveau > Rechercher "Presto Player"**
+4. Activez-le
+5. Allez dans **Content Protect Pro > Settings > Integrations**
+6. Cochez "Enable Presto Player integration"
 
 ---
 
@@ -64,14 +59,20 @@ Voici les étapes pour diagnostiquer et résoudre les problèmes courants.
 **Symptômes:** Bibliothèque vide, shortcode n'affiche rien
 
 **Solution:**
-1. Allez dans **Content Protect Pro > Protected Videos**
-2. Cliquez **"Add Protected Video"**
-3. Remplissez :
-   - **Video ID**: GUID Bunny ou ID Presto
-   - **Title**: Nom de la vidéo
-   - **Required Access (Minutes)**: Durée d'accès
-   - **Integration**: Choisissez votre intégration
-4. Cliquez **"Add Video"**
+1. **Créez d'abord des vidéos dans Presto Player:**
+   - Allez dans **Presto Player > Videos**
+   - Ajoutez vos vidéos avec protection par mot de passe
+   - Notez les IDs des vidéos
+
+2. **Ajoutez-les dans Content Protect Pro:**
+   - Allez dans **Content Protect Pro > Protected Videos**
+   - Cliquez **"Add Protected Video"**
+   - Remplissez :
+     - **Video ID**: ID de votre vidéo Presto Player
+     - **Title**: Nom de la vidéo
+     - **Integration**: Choisissez "Presto Player"
+     - **Gift Code Required**: Cochez si nécessaire
+   - Cliquez **"Add Video"**
 
 ---
 

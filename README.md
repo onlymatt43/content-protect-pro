@@ -1,6 +1,6 @@
 # Content Protect Pro
 
-A comprehensive WordPress plugin that unifies gift code protection and video library protection systems. This plugin combines the functionality of two separate protection systems into a single, powerful solution for content creators and online businesses.
+A streamlined WordPress plugin that protects videos with gift codes using Presto Player for secure video playback. This plugin provides a simple yet powerful solution for content creators who want to protect premium video content behind gift code validation.
 
 ## Features
 
@@ -12,17 +12,14 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 - **Case sensitivity options** for code validation
 - **Custom prefix/suffix** support for branded codes
 
-### 🎬 Video Protection
-- **JWT token-based video protection** for secure streaming
-- **Bunny signed URL integration** for secure streaming
-- **Presto Player Pro compatibility** with overlay protection and hooks
-- **Access level control** (public, private, gift code required)
-- **Time-limited video tokens** with configurable expiry and IP restriction
-  
+### 🎬 Video Protection (Presto Player Only)
+- **Simple integration** with Presto Player for video protection
+- **Gift code validation** for video access
+- **Session-based access control** for validated users
 - **Shortcode-based video embedding** with protection
 
 ### 📊 Analytics & Monitoring
-- **Comprehensive event tracking** for both gift codes and videos
+- **Comprehensive event tracking** for gift codes and videos
 - **Real-time analytics dashboard** with visual charts
 - **Usage statistics and trends** analysis
 - **IP anonymization** for privacy compliance
@@ -46,14 +43,15 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 
 1. **Upload the plugin files** to the `/wp-content/plugins/content-protect-pro/` directory
 2. **Activate the plugin** through the 'Plugins' screen in WordPress
-3. **Configure settings** via the 'Content Protect Pro' menu in your WordPress admin
-4. **Start creating** gift codes and protecting your content!
+3. **Install and activate Presto Player** plugin from WordPress.org
+4. **Configure settings** via the 'Content Protect Pro' menu in your WordPress admin
+5. **Start creating** gift codes and protecting your videos!
 
 ## Requirements
 
 - **WordPress**: 5.0 or higher
 - **PHP**: 7.4 or higher
-- **MySQL**: 5.6 or higher (for database tables)
+- **Presto Player**: Latest version installed and activated
 - **JavaScript**: Enabled for full functionality
 
 ## Quick Start Guide
@@ -69,16 +67,17 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
    - **Expiration Date**: When the code expires (optional)
 4. Click **"Create Gift Code"**
 
-### Protecting Videos
+### Protecting Videos with Presto Player
 
-1. Go to **Content Protect Pro > Protected Videos**
-2. Click **"Add New Video"**
-3. Set up your video protection:
-   - **Video ID**: Your video identifier (Bunny GUID or Presto Player ID)
-   - **Protection Type**: Token-based, DRM, or gift code required
-   - **Access Level**: Public, private, or restricted
-   - **Bunny Integration**: Library ID and DRM settings
-   - **Presto Integration**: Player configuration and overlay protection
+1. **Install and activate Presto Player** from WordPress.org
+2. Create videos in **Presto Player > Videos** with password protection
+3. Go to **Content Protect Pro > Protected Videos**
+4. Click **"Add New Video"**
+5. Set up your video protection:
+   - **Video ID**: Your Presto Player video ID
+   - **Title**: Descriptive name for the video
+   - **Integration**: Select "Presto Player"
+   - **Gift Code Required**: Enable if access needs validation
 
 ### Using Shortcodes
 
@@ -89,12 +88,17 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 
 #### Protected Video
 ```php
-[cpp_protected_video video_id="your-video-id" require_giftcode="true" player_type="bunny"]
+[cpp_protected_video id="your-presto-player-id" code="GIFT_CODE"]
 ```
 
 #### Conditional Content
 ```php
 [cpp_giftcode_check required_codes="PREMIUM,VIP" success_content="Premium content here" failure_content="Please enter a valid code to access this content."]
+```
+
+#### Video Library
+```php
+[cpp_video_library show_filters="true" per_page="12"]
 ```
 
 ## Configuration Options
@@ -109,11 +113,7 @@ A comprehensive WordPress plugin that unifies gift code protection and video lib
 
 ### Video Protection Settings
 - **Enable Video Protection**: Turn video protection on/off
-- **Token Expiry**: How long video access tokens remain valid (300-86400 seconds)
-- **Bunny Integration**: API key, library ID, and DRM configuration
-- **Presto Integration**: Player hooks and overlay protection settings
-  
-- **IP Restriction**: Bind tokens to client IP addresses
+- **Presto Player Integration**: Enable/disable Presto Player integration
 - **Default Access Level**: Default protection level for new videos
 
 ### Security Settings
@@ -142,33 +142,26 @@ Manages video protection settings and access configurations.
 ### cpp_analytics
 Records all events for analytics and monitoring purposes.
 
-## Integration Details
+## Presto Player Integration
 
-### Bunny Integration
-Content Protect Pro integrates with Bunny Stream:
+Content Protect Pro integrates seamlessly with Presto Player for video protection:
 
-- **Signed URLs**: Automatic generation of time-limited, IP-restricted HLS URLs
-- **Upload Management**: Direct video upload to Bunny Stream libraries
-- **Analytics Integration**: Real-time statistics from Bunny Stream API
-- **Token Authentication**: Custom token authentication for enhanced security
+### Setup Requirements
+1. **Presto Player Pro** plugin installed and activated
+2. **Video Configuration** in Presto Player with password protection
+3. **Video IDs** from Presto Player for use in shortcodes
 
-**Setup Requirements:**
-1. Bunny Stream account with API access
-2. Library ID and Access Key from Bunny Stream
+### How It Works
+1. Create videos in Presto Player with password protection enabled
+2. Add videos to Content Protect Pro with their Presto Player IDs
+3. Use the `[cpp_protected_video id="VIDEO_ID" code="GIFT_CODE"]` shortcode
+4. The plugin validates the gift code and displays the Presto Player video
 
-### Presto Player Pro Integration
-Seamless integration with Presto Player Pro features:
-
-- **Player Hooks**: Automatic protection overlay injection
-- **Access Control**: Pre-playback access validation
-- **Gift Code Integration**: Real-time code validation within player
-- **Custom Overlays**: Branded protection messages and forms
-- **Player Configuration**: Dynamic player setup based on access rights
-
-**Setup Requirements:**
-1. Presto Player Pro plugin installed and activated
-2. Video configuration in Content Protect Pro admin
-3. Player shortcode implementation with protection parameters
+### Benefits
+- **Simple Setup**: No complex API configurations
+- **Reliable**: Uses proven Presto Player technology
+- **Lightweight**: Minimal code for better performance
+- **Maintainable**: Easier to debug and update
 
 ## API Reference
 
@@ -184,14 +177,7 @@ $video_manager = new CPP_Video_Manager();
 $token = $video_manager->generate_access_token('video-123');
 ```
 
-### Bunny Integration
-```php
-$bunny = new CPP_Bunny_Integration();
-$signed_url = $bunny->generate_signed_url('video-guid', time() + 3600);
-$video_stats = $bunny->get_video_statistics('video-guid');
-```
-
-### Presto Integration
+### Presto Player Integration
 ```php
 $presto = new CPP_Presto_Integration();
 $has_access = $presto->check_user_access($video_id, $protection_settings);
@@ -228,10 +214,9 @@ $analytics->log_event('custom_event', 'object_type', 'object_id', $metadata);
 
 **Videos not loading:**
 - Confirm video protection is enabled
-- Check that the video ID exists and is configured
-- Verify Bunny API key and library ID are correct
-- Ensure Presto Player Pro is installed and activated
-- Check DRM license server configuration if using DRM
+- Check that the video ID exists and is configured in Presto Player
+- Verify Presto Player Pro is installed and activated
+- Ensure the video is set up with password protection in Presto Player
 
 **Analytics not recording:**
 - Ensure analytics is enabled in plugin settings
@@ -258,7 +243,7 @@ define('WP_DEBUG_LOG', true);
 
 - **Caching**: The plugin is compatible with most WordPress caching plugins
 - **Database Cleanup**: Configure appropriate log retention periods
-- **CDN Integration**: Use Bunny CDN for optimal video delivery performance
+- **Presto Player CDN**: Leverage Presto Player's built-in CDN for optimal video delivery
 - **Analytics Pruning**: Regularly clean old analytics data to maintain performance
 
 ## Support and Development
@@ -277,11 +262,12 @@ This plugin is open source and welcomes contributions:
 ## Changelog
 
 ### Version 1.0.0
-- Initial release combining gift code and video protection features
+- Initial release with gift code management and video protection features
 - Full admin interface with analytics dashboard
 - Comprehensive shortcode system
 - Multi-language support
 - Security and performance optimizations
+- **Simplified to Presto Player only** - removed complex Bunny CDN integration
 
 ## License
 
@@ -301,8 +287,4 @@ GNU General Public License for more details.
 
 ## Credits
 
-Content Protect Pro combines and enhances functionality from:
-- Gift Code Protect v2 - Gift code management and validation system
-- Video Library Protect - Video protection and access control system
-
-Built with ❤️ for the WordPress community.
+Content Protect Pro is a streamlined solution that focuses on essential video protection features using Presto Player. Built with ❤️ for the WordPress community.

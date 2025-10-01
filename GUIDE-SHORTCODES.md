@@ -23,20 +23,18 @@ Sur une page d'accueil ou de connexion pour valider l'accès.
 Affiche une vidéo protégée qui nécessite un code cadeau valide.
 
 ```php
-[cpp_protected_video video_id="votre-video-id" require_giftcode="true" player_type="bunny"]
+[cpp_protected_video id="votre-video-presto-id" code="GIFT_CODE"]
 ```
 
 **Paramètres:**
-- `video_id` (obligatoire): ID de la vidéo configurée dans l'admin
-- `require_giftcode` (optionnel): `true` ou `false` (défaut: `false`)
-- `allowed_codes` (optionnel): Liste de codes séparés par des virgules
-- `player_type` (optionnel): `bunny` ou `presto` (défaut: `bunny`)
+- `id` (obligatoire): ID de la vidéo Presto Player
+- `code` (optionnel): Code cadeau requis pour l'accès
 - `width` (optionnel): Largeur du player (défaut: `100%`)
 - `height` (optionnel): Hauteur du player (défaut: `400px`)
 
 **Exemple d'utilisation:**
 ```php
-[cpp_protected_video video_id="video-123" require_giftcode="true" player_type="bunny" width="800px" height="450px"]
+[cpp_protected_video id="123" code="VIP2024" width="800px" height="450px"]
 ```
 
 ---
@@ -140,9 +138,7 @@ Affiche TOUTES les vidéos dans une grille avec filtres et recherche.
 3. **Créez des codes cadeaux** dans Content Protect Pro → Gift Codes
 
 ### **IDs de vidéos:**
-- Pour Bunny CDN: Utilisez le GUID de votre vidéo Bunny
-- Pour Presto Player: Utilisez l'ID du player Presto
-- Pour URL directe: Utilisez n'importe quel identifiant unique
+- Pour Presto Player: Utilisez l'ID du player Presto (visible dans l'admin Presto Player)
 
 ---
 
@@ -230,9 +226,9 @@ Ajoutez ces classes CSS pour personnaliser l'apparence:
 - Vérifiez les permissions utilisateur
 
 ### **La vidéo ne se charge pas:**
-- Vérifiez la configuration Bunny/Presto
+- Vérifiez que Presto Player est installé et activé
 - Assurez-vous que l'utilisateur a un code cadeau valide
-- Vérifiez les logs d'erreur WordPress
+- Vérifiez que l'ID Presto Player est correct
 
 ### **Le formulaire ne fonctionne pas:**
 - Activez JavaScript dans le navigateur
