@@ -1,7 +1,7 @@
 <?php
 /**
  * Simple Video Test - Content Protect Pro
- * Test individual video loading components
+ * Test individual video loaecho "Presto Player enabled: " . (!empty($settings['presto_enabled']) ? 'Yes' : 'No') . "<br>";ng components
  */
 
 if (!defined('ABSPATH')) {

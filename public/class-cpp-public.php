@@ -251,10 +251,9 @@ class CPP_Public {
 
             <?php if ($atts['show_filters'] === 'true'): ?>
                 <div class="cpp-library-filters">
-                    <button class="cpp-filter-btn active" data-filter="all"><?php _e('Toutes', 'content-protect-pro'); ?></button>
-                    <button class="cpp-filter-btn" data-filter="bunny"><?php _e('Bunny CDN', 'content-protect-pro'); ?></button>
+                    <button class="cpp-filter-btn active" data-filter="all"><?php _e('All Videos', 'content-protect-pro'); ?></button>
                     <button class="cpp-filter-btn" data-filter="presto"><?php _e('Presto Player', 'content-protect-pro'); ?></button>
-                    <button class="cpp-filter-btn" data-filter="direct"><?php _e('Direct', 'content-protect-pro'); ?></button>
+                    <button class="cpp-filter-btn" data-filter="direct"><?php _e('Direct URL', 'content-protect-pro'); ?></button>
                 </div>
             <?php endif; ?>
 
@@ -264,8 +263,7 @@ class CPP_Public {
                         <div class="cpp-video-item"
                              data-video-id="<?php echo esc_attr($video->video_id); ?>"
                              data-integration="<?php
-                                 if (!empty($video->bunny_library_id)) echo 'bunny';
-                                 elseif (!empty($video->presto_player_id)) echo 'presto';
+                                 if (!empty($video->presto_player_id)) echo 'presto';
                                  else echo 'direct';
                              ?>">
 
@@ -284,9 +282,7 @@ class CPP_Public {
                                 <?php endif; ?>
 
                                 <div class="cpp-video-meta">
-                                    <?php if (!empty($video->bunny_library_id)): ?>
-                                        <span class="cpp-integration-badge cpp-bunny"><?php _e('Bunny CDN', 'content-protect-pro'); ?></span>
-                                    <?php elseif (!empty($video->presto_player_id)): ?>
+                                    <?php if (!empty($video->presto_player_id)): ?>
                                         <span class="cpp-integration-badge cpp-presto"><?php _e('Presto Player', 'content-protect-pro'); ?></span>
                                     <?php else: ?>
                                         <span class="cpp-integration-badge cpp-direct"><?php _e('Direct URL', 'content-protect-pro'); ?></span>
@@ -393,9 +389,7 @@ class CPP_Public {
                         // Load video player
                         let videoHtml = '';
 
-                        if (response.data.provider === 'bunny' && response.data.signed_url) {
-                            videoHtml = '<video controls width="100%" height="400" src="' + response.data.signed_url + '"></video>';
-                        } else if (response.data.provider === 'presto' && response.data.presto_embed) {
+                        if (response.data.provider === 'presto' && response.data.presto_embed) {
                             videoHtml = response.data.presto_embed;
                         } else {
                             videoHtml = '<p><?php _e('Lecteur vidéo non disponible.', 'content-protect-pro'); ?></p>';
@@ -517,73 +511,15 @@ class CPP_Public {
                         $provider_set = true;
                     }
                 }
-            } elseif ($forced === 'bunny') {
-                if (!empty($video_row->bunny_library_id)) {
-                    if (!class_exists('CPP_Bunny_Integration')) {
-                        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
-                    }
-                    $bunny = new CPP_Bunny_Integration();
-                    $signed_url = $bunny->generate_signed_url($video_id);
-                    if ($signed_url) {
-                        $response['provider'] = 'bunny';
-                        $response['signed_url'] = $signed_url;
-                        $response['mime'] = 'application/x-mpegURL';
-                        $provider_set = true;
-                    }
-                }
             } else {
-                // Auto/preference mode
-                $try_presto_first = ($pref === 'presto' || $pref === 'auto');
-
-                if ($try_presto_first) {
-                    // Try Presto first
-                    if (!empty($video_row->presto_player_id)) {
-                        $presto_id = intval($video_row->presto_player_id);
-                        $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
-                        if (!empty($embed_html)) {
-                            $response['provider'] = 'presto';
-                            $response['presto_embed'] = $embed_html;
-                            $provider_set = true;
-                        }
-                    }
-                    // Fallback to Bunny
-                    if (!$provider_set && !empty($video_row->bunny_library_id)) {
-                        if (!class_exists('CPP_Bunny_Integration')) {
-                            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
-                        }
-                        $bunny = new CPP_Bunny_Integration();
-                        $signed_url = $bunny->generate_signed_url($video_id);
-                        if ($signed_url) {
-                            $response['provider'] = 'bunny';
-                            $response['signed_url'] = $signed_url;
-                            $response['mime'] = 'application/x-mpegURL';
-                            $provider_set = true;
-                        }
-                    }
-                } else {
-                    // Try Bunny first
-                    if (!empty($video_row->bunny_library_id)) {
-                        if (!class_exists('CPP_Bunny_Integration')) {
-                            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
-                        }
-                        $bunny = new CPP_Bunny_Integration();
-                        $signed_url = $bunny->generate_signed_url($video_id);
-                        if ($signed_url) {
-                            $response['provider'] = 'bunny';
-                            $response['signed_url'] = $signed_url;
-                            $response['mime'] = 'application/x-mpegURL';
-                            $provider_set = true;
-                        }
-                    }
-                    // Fallback to Presto
-                    if (!$provider_set && !empty($video_row->presto_player_id)) {
-                        $presto_id = intval($video_row->presto_player_id);
-                        $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
-                        if (!empty($embed_html)) {
-                            $response['provider'] = 'presto';
-                            $response['presto_embed'] = $embed_html;
-                            $provider_set = true;
-                        }
+                // Auto mode - try Presto first, then direct
+                if (!empty($video_row->presto_player_id)) {
+                    $presto_id = intval($video_row->presto_player_id);
+                    $embed_html = do_shortcode('[presto_player id="' . $presto_id . '"]');
+                    if (!empty($embed_html)) {
+                        $response['provider'] = 'presto';
+                        $response['presto_embed'] = $embed_html;
+                        $provider_set = true;
                     }
                 }
             }

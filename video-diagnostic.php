@@ -1,7 +1,9 @@
 <?php
 /**
  * Video Loading Diagnostic Script
- * Run this in your WordPress root to diagnose video loading issues
+ *        echo "<td>echo "Presto Player enabled: " . (!empty($settings['presto_enabled']) ? "✅ Yes" : "⚠️ No") . "<br>";($video->presto_player_id ?: '-') . "</td>";
+        echo "<td>" . ($video->direct_url ?: '-') . "</td>";
+        echo "<td>" . ($video->integration_type ?: 'auto') . "</td>"; this in your WordPress root to diagnose video loading issues
  */
 
 if (!defined('ABSPATH')) {
@@ -40,7 +42,7 @@ echo "Total videos: <strong>$video_count</strong><br>";
 if ($video_count > 0) {
     $videos = $wpdb->get_results("SELECT video_id, title, bunny_library_id, presto_player_id, direct_url, integration_type FROM {$wpdb->prefix}cpp_protected_videos LIMIT 5");
     echo "<table border='1' style='border-collapse:collapse;margin-top:10px;'>";
-    echo "<tr><th>Video ID</th><th>Title</th><th>Bunny ID</th><th>Presto ID</th><th>Direct URL</th><th>Type</th></tr>";
+    echo "<tr><th>Video ID</th><th>Title</th><th>Presto ID</th><th>Direct URL</th><th>Type</th></tr>";
     foreach ($videos as $video) {
         echo "<tr>";
         echo "<td>{$video->video_id}</td>";
@@ -144,7 +146,7 @@ $issues = [];
 
 if (!$active) $issues[] = "Activate the Content Protect Pro plugin";
 if ($video_count == 0) $issues[] = "Add videos in the admin panel";
-if (empty($settings['bunny_enabled']) && empty($settings['presto_enabled'])) $issues[] = "Configure at least one video integration (Bunny or Presto)";
+if (empty($settings['presto_enabled'])) $issues[] = "Configure Presto Player integration in settings";
 if (!shortcode_exists('cpp_video_library')) $issues[] = "Shortcode not registered - check for PHP errors";
 
 if (empty($issues)) {

@@ -42,29 +42,16 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
             <h3><?php _e('Integration Status', 'content-protect-pro'); ?></h3>
             <?php
             $integration_settings = get_option('cpp_integration_settings', array());
-            $bunny_enabled = !empty($integration_settings['bunny_enabled']);
             $presto_enabled = !empty($integration_settings['presto_enabled']);
             ?>
             
             <div class="cpp-status-grid">
                 <div class="cpp-status-card">
-                    <h4><?php _e('Bunny CDN', 'content-protect-pro'); ?></h4>
-                    <p class="<?php echo $bunny_enabled ? 'cpp-status-enabled' : 'cpp-status-disabled'; ?>">
-                        <?php echo $bunny_enabled ? __('Enabled', 'content-protect-pro') : __('Disabled', 'content-protect-pro'); ?>
-                    </p>
-                    <?php if (!$bunny_enabled): ?>
-                        <a href="<?php echo admin_url('admin.php?page=content-protect-pro-settings&tab=integrations'); ?>" class="button button-small">
-                            <?php _e('Configure', 'content-protect-pro'); ?>
-                        </a>
-                    <?php endif; ?>
-                </div>
-                
-                <div class="cpp-status-card">
                     <h4><?php _e('Presto Player', 'content-protect-pro'); ?></h4>
                     <p class="<?php echo $presto_enabled && is_plugin_active('presto-player/presto-player.php') ? 'cpp-status-enabled' : 'cpp-status-disabled'; ?>">
                         <?php 
                         if ($presto_enabled && is_plugin_active('presto-player/presto-player.php')) {
-                            _e('Enabled', 'content-protect-pro');
+                            _e('Enabled & Active', 'content-protect-pro');
                         } elseif ($presto_enabled) {
                             _e('Configured but Plugin Inactive', 'content-protect-pro');
                         } else {
@@ -118,14 +105,12 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
                                     </td>
                                     <td><?php echo esc_html($video->required_minutes); ?></td>
                                     <td>
-                                        <?php if (!empty($video->bunny_library_id)): ?>
-                                            <span class="cpp-integration-badge cpp-bunny">Bunny CDN</span>
-                                        <?php endif; ?>
                                         <?php if (!empty($video->presto_player_id)): ?>
                                             <span class="cpp-integration-badge cpp-presto">Presto Player</span>
-                                        <?php endif; ?>
-                                        <?php if (empty($video->bunny_library_id) && empty($video->presto_player_id)): ?>
+                                        <?php elseif (!empty($video->direct_url)): ?>
                                             <span class="cpp-integration-badge cpp-direct">Direct URL</span>
+                                        <?php else: ?>
+                                            <span class="cpp-integration-badge cpp-none">Non configuré</span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -177,8 +162,8 @@ $video_manager = class_exists('CPP_Video_Manager') ? new CPP_Video_Manager() : n
             <h3><?php _e('Quick Setup Guide', 'content-protect-pro'); ?></h3>
             <ol class="cpp-setup-steps">
                 <li>
-                    <strong><?php _e('Configure Integrations', 'content-protect-pro'); ?></strong>
-                    <p><?php _e('Set up Bunny CDN or Presto Player integration in the settings.', 'content-protect-pro'); ?></p>
+                    <strong><?php _e('Configure Presto Player', 'content-protect-pro'); ?></strong>
+                    <p><?php _e('Set up Presto Player integration in the settings.', 'content-protect-pro'); ?></p>
                 </li>
                 <li>
                     <strong><?php _e('Add Protected Videos', 'content-protect-pro'); ?></strong>
@@ -367,17 +352,12 @@ function addVideo() {
                         <td><label><strong>Integration:</strong></label></td>
                         <td>
                             <select id="integration_type" style="width: 100%;" onchange="toggleIntegrationFields()">
-                                <option value="bunny">Bunny CDN</option>
                                 <option value="presto">Presto Player</option>
                                 <option value="direct">Direct URL</option>
                             </select>
                         </td>
                     </tr>
-                    <tr id="bunny_library_row">
-                        <td><label>Bunny Library ID:</label></td>
-                        <td><input type="text" id="bunny_library_id" placeholder="12345" style="width: 100%;"></td>
-                    </tr>
-                    <tr id="presto_player_row" style="display: none;">
+                    <tr id="presto_player_row">
                         <td><label>Presto Player ID:</label></td>
                         <td><input type="text" id="presto_player_id" placeholder="123" style="width: 100%;"></td>
                     </tr>
@@ -419,11 +399,9 @@ function addVideo() {
 
 function toggleIntegrationFields() {
     const integrationType = document.getElementById('integration_type').value;
-    const bunnyRow = document.getElementById('bunny_library_row');
     const prestoRow = document.getElementById('presto_player_row');
     const directRow = document.getElementById('direct_url_row');
     
-    bunnyRow.style.display = integrationType === 'bunny' ? 'table-row' : 'none';
     prestoRow.style.display = integrationType === 'presto' ? 'table-row' : 'none';
     directRow.style.display = integrationType === 'direct' ? 'table-row' : 'none';
 }
@@ -441,7 +419,6 @@ function processVideoCreation() {
         title: document.getElementById('video_title').value,
         required_minutes: document.getElementById('required_minutes').value,
         integration_type: document.getElementById('integration_type').value,
-        bunny_library_id: document.getElementById('bunny_library_id').value,
         presto_player_id: document.getElementById('presto_player_id').value,
         direct_url: document.getElementById('direct_url').value,
         description: document.getElementById('video_description').value,
