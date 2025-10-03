@@ -1,3 +1,14 @@
+/.DS_Store
+/node_modules/
+/vendor/
+/backups/
+/wp-cli.phar
+/.idea/
+.vscode/
+.env
+/.env.local
+/.env.*
+/.phpunit.result.cache
 # WordPress Plugin .gitignore
 # Core WordPress files
 wp-admin/

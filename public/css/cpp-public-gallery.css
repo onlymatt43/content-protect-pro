@@ -1,0 +1,167 @@
+/* ============================================================
+   Content Protect Pro — Gallery + Modal CSS
+   - Focus: clear grid layout, accessible modal, override-friendly
+   - JS toggles modal visibility via aria-hidden="false"
+   - Keep variables here so site builders can override them easily
+   ============================================================ */
+
+:root {
+  --cpp-gutter: 16px;
+  --cpp-bg: #ffffff;
+  --cpp-border: #ececec;
+  --cpp-muted: #666666;
+  --cpp-accent: #d63638;
+  --cpp-modal-bg: rgba(0,0,0,0.6);
+  --cpp-modal-content-bg: #ffffff;
+  --cpp-radius: 8px;
+}
+
+/* -----------------------------
+   Gallery grid
+   ----------------------------- */
+.cpp-video-grid {
+  display: grid;
+  gap: var(--cpp-gutter);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.cpp-video-item {
+  background: var(--cpp-bg);
+  border: 1px solid var(--cpp-border);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.cpp-video-item:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+
+.cpp-video-link { display: flex; text-decoration: none; color: inherit; align-items: stretch; }
+
+.cpp-video-thumbnail {
+  width: 40%;
+  min-height: 140px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex-shrink: 0;
+}
+.cpp-video-thumbnail img { width:100%; height:100%; object-fit:cover; display:block; }
+
+.cpp-video-info {
+  padding: 12px;
+  width: 60%;
+  display:flex;
+  flex-direction:column;
+  justify-content: center;
+}
+.cpp-video-info h4 { margin:0 0 8px 0; font-size:16px; }
+.cpp-video-info p { margin:0; color:var(--cpp-muted); font-size:13px; }
+.cpp-video-meta { margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.cpp-integration-badge { background:#f1f1f1; padding:4px 8px; border-radius:4px; font-size:12px; }
+.cpp-requires-code { color:var(--cpp-accent); font-weight:bold; }
+
+/* If layout collapses on small screens, stack thumbnail above info */
+@media (max-width:720px) {
+  .cpp-video-link { flex-direction: column; }
+  .cpp-video-thumbnail { width:100%; height:160px; }
+  .cpp-video-info { width:100%; }
+}
+
+/* -----------------------------
+   Preview modal (scoped to #cpp-video-modal to avoid collisions)
+   JS must toggle aria-hidden="false" to show the modal
+   ----------------------------- */
+/* Use very specific selectors to avoid page-builder or theme overrides which
+   were causing a thin white strip or early rendering. These rules are intentionally
+   high-specificity and use !important sparingly for the overlay/backdrop. */
+body #cpp-video-modal,
+html body #cpp-video-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  display: none !important; /* keep out of flow until explicitly shown */
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99999 !important;
+  background: var(--cpp-modal-bg) !important;
+}
+/* when hidden, ensure no interaction or layout impact */
+body #cpp-video-modal[aria-hidden="true"], html body #cpp-video-modal[aria-hidden="true"] { display: none !important; pointer-events: none !important; }
+body #cpp-video-modal[aria-hidden="false"], html body #cpp-video-modal[aria-hidden="false"] { display: flex !important; pointer-events: auto !important; }
+
+/* Overlay (background layer inside the modal) */
+#cpp-video-modal .cpp-modal-overlay,
+body #cpp-video-modal .cpp-modal-overlay,
+html body #cpp-video-modal .cpp-modal-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  background: rgba(0,0,0,0.65) !important; /* force dark backdrop for this modal */
+}
+
+#cpp-video-modal .cpp-modal-content {
+  background: var(--cpp-modal-content-bg);
+  border-radius: var(--cpp-radius);
+  max-width: 960px;
+  width: calc(100% - 48px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  overflow: hidden;
+  position: relative !important; /* override theme CSS that may absolutely position the content */
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  margin: 0 auto !important;
+}
+#cpp-video-modal .cpp-modal-body { padding: 0; }
+#cpp-video-modal .cpp-preview-spinner { display:flex; align-items:center; justify-content:center; min-height:160px; padding:24px; }
+
+/* Accessible close button */
+#cpp-video-modal .cpp-modal-close {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: transparent;
+  border: none;
+  color: #333;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px;
+}
+
+#cpp-video-modal .cpp-modal-content iframe,
+#cpp-video-modal .cpp-modal-content img,
+#cpp-video-modal .cpp-modal-content video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Specific container used by JS to inject preview HTML */
+#cpp-modal-video-container, #cpp-video-modal #cpp-modal-video-container {
+  width: 100%;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.cpp-preview-card { display:flex; gap:16px; align-items:flex-start; padding:16px; }
+.cpp-preview-thumb img { max-width:220px; width:220px; height:auto; border-radius:6px; object-fit:cover; }
+.cpp-preview-meta h3 { margin:0 0 8px 0; }
+.cpp-preview-meta p { margin:0; color:#555; }
+
+@media (max-width:900px) {
+  .cpp-video-thumbnail { display:none; }
+  .cpp-video-info { width:100%; }
+  #cpp-video-modal .cpp-modal-content { width: 96%; }
+  .cpp-preview-thumb img { max-width: 140px; width:140px; }
+  .cpp-preview-card { flex-direction:column; align-items:center; text-align:center; }
+}
+
+/* Small helper: visually hide but keep available to assistive tech */
+.cpp-hidden-visually {
+  position: absolute !important;
+  height: 1px; width: 1px; overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px); white-space: nowrap;
+}
+
+

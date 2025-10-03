@@ -17,19 +17,61 @@ if (isset($_POST['submit'])) {
     
     // Save general settings
     if (isset($_POST['cpp_general_settings'])) {
-        update_option('cpp_general_settings', $_POST['cpp_general_settings']);
+        // Basic sanitization for general settings
+        $in = $_POST['cpp_general_settings'];
+        $san = array();
+        $san['enable_plugin'] = !empty($in['enable_plugin']) ? 1 : 0;
+        $san['debug_mode'] = !empty($in['debug_mode']) ? 1 : 0;
+        $san['default_protection_level'] = in_array($in['default_protection_level'] ?? '', array('low','medium','high')) ? $in['default_protection_level'] : 'medium';
+        $san['code_length'] = isset($in['code_length']) ? intval($in['code_length']) : 8;
+        $san['code_prefix'] = isset($in['code_prefix']) ? sanitize_text_field($in['code_prefix']) : '';
+        $san['code_suffix'] = isset($in['code_suffix']) ? sanitize_text_field($in['code_suffix']) : '';
+        update_option('cpp_general_settings', $san);
         echo '<div class="notice notice-success"><p>' . __('General settings saved successfully!', 'content-protect-pro') . '</p></div>';
     }
     
     // Save security settings
     if (isset($_POST['cpp_security_settings'])) {
-        update_option('cpp_security_settings', $_POST['cpp_security_settings']);
+        // Sanitized security settings
+        $in = $_POST['cpp_security_settings'];
+        $san = array();
+        $san['enable_logging'] = !empty($in['enable_logging']) ? 1 : 0;
+        $san['enable_rate_limiting'] = !empty($in['enable_rate_limiting']) ? 1 : 0;
+        $san['rate_limit_requests'] = isset($in['rate_limit_requests']) ? intval($in['rate_limit_requests']) : 100;
+        $san['rate_limit_window'] = isset($in['rate_limit_window']) ? intval($in['rate_limit_window']) : 3600;
+        $san['log_retention_days'] = isset($in['log_retention_days']) ? intval($in['log_retention_days']) : 30;
+        // IP binding may live under security settings as well
+        $san['ip_binding'] = !empty($in['ip_binding']) ? 1 : 0;
+        update_option('cpp_security_settings', $san);
         echo '<div class="notice notice-success"><p>' . __('Security settings saved successfully!', 'content-protect-pro') . '</p></div>';
     }
     
     // Save integration settings
     if (isset($_POST['cpp_integration_settings'])) {
-        update_option('cpp_integration_settings', $_POST['cpp_integration_settings']);
+        // Sanitized integration settings
+        $in = $_POST['cpp_integration_settings'];
+        $san = array();
+        $san['presto_enabled'] = !empty($in['presto_enabled']) ? 1 : 0;
+        $san['presto_license_key'] = isset($in['presto_license_key']) ? sanitize_text_field($in['presto_license_key']) : '';
+        $san['bunny_enabled'] = !empty($in['bunny_enabled']) ? 1 : 0;
+        $san['bunny_api_key'] = isset($in['bunny_api_key']) ? sanitize_text_field($in['bunny_api_key']) : '';
+        $san['bunny_library_id'] = isset($in['bunny_library_id']) ? sanitize_text_field($in['bunny_library_id']) : '';
+        $san['bunny_token_auth_key'] = isset($in['bunny_token_auth_key']) ? sanitize_text_field($in['bunny_token_auth_key']) : '';
+        $san['signed_urls'] = !empty($in['signed_urls']) ? 1 : 0;
+        $san['token_expiry'] = isset($in['token_expiry']) ? max(60, min(86400, intval($in['token_expiry']))) : 900;
+
+        // Overlay defaults: only accept attachment ID (robust). Legacy URLs should be migrated.
+        $overlay = isset($in['overlay_image']) ? trim($in['overlay_image']) : '';
+        if (!empty($overlay) && ctype_digit($overlay)) {
+            $san['overlay_image'] = intval($overlay);
+        } else {
+            $san['overlay_image'] = '';
+        }
+
+        $purchase = isset($in['purchase_url']) ? esc_url_raw($in['purchase_url']) : '';
+        $san['purchase_url'] = $purchase;
+
+        update_option('cpp_integration_settings', $san);
         echo '<div class="notice notice-success"><p>' . __('Integration settings saved successfully!', 'content-protect-pro') . '</p></div>';
     }
 }
@@ -58,6 +100,11 @@ $integration_defaults = array(
     'presto_enabled' => 1,
     'presto_license_key' => ''
 );
+
+$integration_defaults = wp_parse_args($integration_defaults, array(
+    'signed_urls' => 0,
+    'token_expiry' => 900, // seconds
+));
 
 $general_settings = wp_parse_args($general_settings, $general_defaults);
 $security_settings = wp_parse_args($security_settings, $security_defaults);
@@ -255,6 +302,95 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general
                                         </a>
                                     </p>
                                 <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Bunny CDN', 'content-protect-pro'); ?></th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="cpp_integration_settings[bunny_enabled]" value="1" <?php checked(1, isset($integration_settings['bunny_enabled']) ? $integration_settings['bunny_enabled'] : 0); ?> />
+                                        <?php _e('Enable Bunny CDN integration', 'content-protect-pro'); ?>
+                                    </label>
+                                    <p class="description"><?php _e('Enable Bunny Stream integration for signed playback URLs and CDN storage.', 'content-protect-pro'); ?></p>
+                                </fieldset>
+                                <p>
+                                    <label><?php _e('Bunny API Key', 'content-protect-pro'); ?></label><br />
+                                    <input type="password" name="cpp_integration_settings[bunny_api_key]" value="<?php echo esc_attr(isset($integration_settings['bunny_api_key']) ? $integration_settings['bunny_api_key'] : ''); ?>" class="regular-text" />
+                                </p>
+                                <p>
+                                    <label><?php _e('Bunny Library ID', 'content-protect-pro'); ?></label><br />
+                                    <input type="text" name="cpp_integration_settings[bunny_library_id]" value="<?php echo esc_attr(isset($integration_settings['bunny_library_id']) ? $integration_settings['bunny_library_id'] : ''); ?>" class="regular-text" />
+                                </p>
+                                <p>
+                                    <label><?php _e('Bunny Token Auth Key', 'content-protect-pro'); ?></label><br />
+                                    <input type="password" name="cpp_integration_settings[bunny_token_auth_key]" value="<?php echo esc_attr(isset($integration_settings['bunny_token_auth_key']) ? $integration_settings['bunny_token_auth_key'] : ''); ?>" class="regular-text" />
+                                </p>
+                                <p>
+                                    <button type="button" class="button" id="cpp-test-bunny"><?php _e('Test Bunny Connection', 'content-protect-pro'); ?></button>
+                                    <span id="cpp-test-bunny-result" style="margin-left:10px"></span>
+                                </p>
+                                <div style="margin-top:12px;">
+                                    <button type="button" class="button" id="cpp-refresh-bunny-tests"><?php _e('Refresh recent tests', 'content-protect-pro'); ?></button>
+                                    <div id="cpp-bunny-tests-list" style="margin-top:10px; max-height:240px; overflow:auto; border:1px solid #eee; padding:8px; background:#fff;"></div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Enable signed playback URLs', 'content-protect-pro'); ?></th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="cpp_integration_settings[signed_urls]" value="1" <?php checked(1, isset($integration_settings['signed_urls']) ? $integration_settings['signed_urls'] : 0); ?> />
+                                        <?php _e('Return a short-lived signed playback URL from the request-playback endpoint (stub signing).', 'content-protect-pro'); ?>
+                                    </label>
+                                    <p class="description"><?php _e('When enabled, the front-end will receive a playback_url instead of embed HTML. This uses a local HMAC-based signing stub unless you configure a CDN integration.', 'content-protect-pro'); ?></p>
+                                </fieldset>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Token expiry (seconds)', 'content-protect-pro'); ?></th>
+                            <td>
+                                <input type="number" name="cpp_integration_settings[token_expiry]" value="<?php echo intval(isset($integration_settings['token_expiry']) ? $integration_settings['token_expiry'] : $integration_defaults['token_expiry']); ?>" min="60" max="86400" />
+                                <p class="description"><?php _e('Duration in seconds for local playback tokens (used when Bunny is not available).', 'content-protect-pro'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('Default Overlay Image', 'content-protect-pro'); ?></th>
+                            <td>
+                                <!-- Store attachment ID only -->
+                                <input type="hidden" id="cpp_default_overlay_image" name="cpp_integration_settings[overlay_image]" value="<?php echo isset($integration_settings['overlay_image']) ? esc_attr($integration_settings['overlay_image']) : ''; ?>" />
+                                <button type="button" class="button" id="cpp_default_overlay_button"><?php _e('Upload/Select Image', 'content-protect-pro'); ?></button>
+                                <p class="description"><?php _e('A site-wide default overlay image used when a gift code does not specify its own. Please select an image from the Media Library; external URLs are no longer supported.', 'content-protect-pro'); ?></p>
+                                <div id="cpp_default_overlay_preview" style="margin-top:8px;">
+                                    <?php if (!empty($integration_settings['overlay_image'])): ?>
+                                        <?php $ov = $integration_settings['overlay_image'];
+                                        $ov_url = (ctype_digit((string)$ov) && function_exists('wp_get_attachment_url')) ? wp_get_attachment_url(intval($ov)) : '' ; ?>
+                                        <?php if ($ov_url): ?>
+                                            <img src="<?php echo esc_url($ov_url); ?>" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row"><?php _e('Default Purchase URL', 'content-protect-pro'); ?></th>
+                            <td>
+                                <input type="url" name="cpp_integration_settings[purchase_url]" value="<?php echo isset($integration_settings['purchase_url']) ? esc_attr($integration_settings['purchase_url']) : ''; ?>" class="regular-text" placeholder="https://example.com/buy" />
+                                <p class="description"><?php _e('Site-wide fallback purchase link when a gift code does not provide one (defaults to site home if empty).', 'content-protect-pro'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php _e('IP binding for tokens', 'content-protect-pro'); ?></th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="checkbox" name="cpp_security_settings[ip_binding]" value="1" <?php checked(1, isset($security_settings['ip_binding']) ? $security_settings['ip_binding'] : 0); ?> />
+                                        <?php _e('Bind local playback tokens to the requestor IP address (stronger anti-sharing).', 'content-protect-pro'); ?>
+                                    </label>
+                                    <p class="description"><?php _e('When enabled, local playback tokens will only work from the IP that requested the token.', 'content-protect-pro'); ?></p>
+                                </fieldset>
                             </td>
                         </tr>
                     </table>
@@ -493,4 +629,70 @@ function importSettings() {
     // Implementation would go here
     alert('<?php _e('Feature coming soon', 'content-protect-pro'); ?>');
 }
+
+// Bunny test button handler
+document.addEventListener('DOMContentLoaded', function(){
+    var btn = document.getElementById('cpp-test-bunny');
+    if (!btn) return;
+    btn.addEventListener('click', function(){
+        var resultEl = document.getElementById('cpp-test-bunny-result');
+        if (resultEl) resultEl.textContent = '<?php echo esc_js(__('Testing...', 'content-protect-pro')); ?>';
+
+        var data = new FormData();
+        data.append('action', 'cpp_test_bunny_connection');
+        data.append('nonce', '<?php echo wp_create_nonce('cpp_test_bunny'); ?>');
+
+        fetch(ajaxurl, {
+            method: 'POST',
+            body: data
+        }).then(function(resp){
+            return resp.json();
+        }).then(function(json){
+            if (json.success) {
+                if (resultEl) resultEl.textContent = 'OK: ' + (json.data && json.data.message ? json.data.message : '<?php echo esc_js(__('Connection successful', 'content-protect-pro')); ?>');
+            } else {
+                if (resultEl) resultEl.textContent = 'Error: ' + (json.data && json.data.message ? json.data.message : JSON.stringify(json.data));
+            }
+        }).catch(function(err){
+            if (resultEl) resultEl.textContent = 'Error: ' + err;
+        });
+    });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var btn = document.getElementById('cpp_default_overlay_button');
+    if (!btn) return;
+
+    btn.addEventListener('click', function(e){
+        e.preventDefault();
+        if (typeof wp !== 'undefined' && typeof wp.media === 'function') {
+            var frame = wp.media({
+                title: '<?php echo addslashes(__('Select Default Overlay Image', 'content-protect-pro')); ?>',
+                button: { text: '<?php echo addslashes(__('Use Image', 'content-protect-pro')); ?>' },
+                multiple: false
+            });
+
+            frame.on('select', function(){
+                var attachment = frame.state().get('selection').first().toJSON();
+                if (attachment) {
+                    // Store attachment ID for robustness; fallback to URL if no ID
+                    var input = document.getElementById('cpp_default_overlay_image');
+                    if (attachment.id) input.value = attachment.id;
+                    else if (attachment.url) input.value = attachment.url;
+                    var preview = document.getElementById('cpp_default_overlay_preview');
+                    var url = attachment.url || '';
+                    preview.innerHTML = '<img src="' + url + '" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />';
+                }
+            });
+
+            frame.open();
+            return;
+        }
+
+        // No fallback: require selecting from media library. Alert the user if wp.media isn't available.
+        alert('<?php echo addslashes(__('Please use the media library to select an image. External URLs are no longer supported.', 'content-protect-pro')); ?>');
+    });
+});
 </script>

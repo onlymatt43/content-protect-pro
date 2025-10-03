@@ -281,16 +281,87 @@ if ($analytics) {
             <p><?php _e('Export your analytics data for external analysis or reporting.', 'content-protect-pro'); ?></p>
             
             <div class="cpp-export-buttons">
-                <button type="button" class="button button-secondary" onclick="exportCSV()">
+                <button type="button" id="cpp-export-csv" class="button button-secondary">
                     <?php _e('Export to CSV', 'content-protect-pro'); ?>
                 </button>
-                <button type="button" class="button button-secondary" onclick="exportJSON()">
+                <button type="button" id="cpp-export-json" class="button button-secondary">
                     <?php _e('Export to JSON', 'content-protect-pro'); ?>
                 </button>
-                <button type="button" class="button button-secondary" onclick="emailReport()">
+                <button type="button" id="cpp-email-report" class="button button-secondary">
                     <?php _e('Email Report', 'content-protect-pro'); ?>
                 </button>
             </div>
+            <script>
+            (function(){
+                function ajaxPost(action, data, cb) {
+                    data = data || {};
+                    data.action = action;
+                    data.nonce = '<?php echo wp_create_nonce('cpp_analytics_export'); ?>';
+
+                    var fd = new FormData();
+                    Object.keys(data).forEach(function(k){ fd.append(k, data[k]); });
+
+                    fetch(ajaxurl, { method: 'POST', body: fd })
+                        .then(function(r){ return r.json(); })
+                        .then(function(json){ cb(null, json); })
+                        .catch(function(err){ cb(err); });
+                }
+
+                function downloadBase64(filename, b64) {
+                    var blob = b64ToBlob(b64);
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                }
+
+                function b64ToBlob(b64) {
+                    var binary = atob(b64);
+                    var len = binary.length;
+                    var bytes = new Uint8Array(len);
+                    for (var i = 0; i < len; i++) { bytes[i] = binary.charCodeAt(i); }
+                    return new Blob([bytes]);
+                }
+
+                document.getElementById('cpp-export-csv').addEventListener('click', function(){
+                    var from = document.getElementById('date_from').value || '<?php echo esc_js($date_from); ?>';
+                    var to = document.getElementById('date_to').value || '<?php echo esc_js($date_to); ?>';
+                    // Create and submit a form to trigger native download
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = ajaxurl;
+                    form.target = '_blank';
+                    var inputAction = document.createElement('input'); inputAction.type = 'hidden'; inputAction.name = 'action'; inputAction.value = 'cpp_export_analytics_csv'; form.appendChild(inputAction);
+                    var inputFrom = document.createElement('input'); inputFrom.type = 'hidden'; inputFrom.name = 'date_from'; inputFrom.value = from; form.appendChild(inputFrom);
+                    var inputTo = document.createElement('input'); inputTo.type = 'hidden'; inputTo.name = 'date_to'; inputTo.value = to; form.appendChild(inputTo);
+                    var inputNonce = document.createElement('input'); inputNonce.type = 'hidden'; inputNonce.name = 'nonce'; inputNonce.value = '<?php echo wp_create_nonce('cpp_analytics_export'); ?>'; form.appendChild(inputNonce);
+                    document.body.appendChild(form); form.submit(); form.remove();
+                });
+
+                document.getElementById('cpp-export-json').addEventListener('click', function(){
+                    var from = document.getElementById('date_from').value || '<?php echo esc_js($date_from); ?>';
+                    var to = document.getElementById('date_to').value || '<?php echo esc_js($date_to); ?>';
+                    // Create and submit a form to trigger native download
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = ajaxurl;
+                    form.target = '_blank';
+                    var inputAction = document.createElement('input'); inputAction.type = 'hidden'; inputAction.name = 'action'; inputAction.value = 'cpp_export_analytics_json'; form.appendChild(inputAction);
+                    var inputFrom = document.createElement('input'); inputFrom.type = 'hidden'; inputFrom.name = 'date_from'; inputFrom.value = from; form.appendChild(inputFrom);
+                    var inputTo = document.createElement('input'); inputTo.type = 'hidden'; inputTo.name = 'date_to'; inputTo.value = to; form.appendChild(inputTo);
+                    var inputNonce = document.createElement('input'); inputNonce.type = 'hidden'; inputNonce.name = 'nonce'; inputNonce.value = '<?php echo wp_create_nonce('cpp_analytics_export'); ?>'; form.appendChild(inputNonce);
+                    document.body.appendChild(form); form.submit(); form.remove();
+                });
+
+                document.getElementById('cpp-email-report').addEventListener('click', function(){
+                    var from = document.getElementById('date_from').value || '<?php echo esc_js($date_from); ?>';
+                    var to = document.getElementById('date_to').value || '<?php echo esc_js($date_to); ?>';
+                    ajaxPost('cpp_email_analytics_report', {date_from: from, date_to: to, format: 'html'}, function(err, res){
+                        if (err || !res || !res.success) { alert('<?php _e('Email failed', 'content-protect-pro'); ?>'); return; }
+                        alert(res.data && res.data.message ? res.data.message : '<?php _e('Report emailed', 'content-protect-pro'); ?>');
+                    });
+                });
+            })();
+            </script>
         </div>
     </div>
 </div>

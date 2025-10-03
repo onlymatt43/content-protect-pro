@@ -37,6 +37,38 @@ Affiche une vidéo protégée qui nécessite un code cadeau valide.
 [cpp_protected_video id="123" code="VIP2024" width="800px" height="450px"]
 ```
 
+### Signed playback URLs et comportement Bunny
+
+Lorsque l'option "Enable signed playback URLs" est activée dans Content Protect Pro → Settings → Integrations, la réponse de lecture peut renvoyer soit un embed Presto (HTML), soit une URL signée (champ `playback_url`) que le front-end utilisera pour charger la vidéo.
+
+- Si Bunny CDN est configuré pour la vidéo (champ `bunny_library_id`) et que l'intégration Bunny est active, le plugin demandera une URL signée à Bunny et renverra `playback_url` pointant directement vers le CDN. La réponse inclut aussi `expires_at` si fournie par Bunny.
+- Si Bunny n'est pas disponible, le plugin génère une URL signée locale (HMAC) pointant vers `/_cpp_playback` sur votre site. Cette URL est valable pour une courte durée et vérifiée côté serveur avant de rendre le lecteur Presto.
+
+Pour tester:
+
+1. Activez "Enable signed playback URLs" dans les réglages d'intégration.
+2. Validez un code via le formulaire `[cpp_giftcode_form]` ou l'endpoint REST `smartvideo/v1/redeem`.
+3. Appelez l'endpoint `smartvideo/v1/request-playback` pour recevoir `playback_url` ou `embed`.
+
+Test automatisé rapide (script)
+--------------------------------
+Un petit script bash est inclus dans `tools/e2e_playback_test.sh` pour exécuter un test complet (redeem → request-playback → probe playback_url).
+
+Usage (remplacez les placeholders) :
+
+```bash
+SITE=https://example.com VIDEO_ID=123 CODE=VIP2024 ./tools/e2e_playback_test.sh
+```
+
+Le script :
+- valide le code (endpoint `/wp-json/smartvideo/v1/redeem`) et sauvegarde les cookies dans un cookiejar temporaire
+- appelle `/wp-json/smartvideo/v1/request-playback` avec le cookie
+- récupère `playback_url` et lance un HEAD sur cette URL pour vérifier l'accès CDN / stub
+
+Collez la sortie du script si vous voulez que j'interprète les erreurs.
+
+Remarque: la validation fine des signatures côté serveur protège contre le hotlinking public, mais pour une protection robuste en production il est recommandé d'utiliser Bunny/CDN signé côté fournisseur.
+
 ---
 
 ### 3. **Vérification de Code Cadeau** `[cpp_giftcode_check]`
@@ -96,7 +128,7 @@ Affiche TOUTES les vidéos dans une grille avec filtres et recherche.
 <h1>Vidéo Exclusive</h1>
 <p>Cette vidéo est réservée à nos membres premium.</p>
 
-[cpp_protected_video video_id="premium-video-001" require_giftcode="true" player_type="bunny"]
+[cpp_protected_video id="premium-video-001" code="VIP2024" width="100%" height="450px"]
 ```
 
 ### **Contenu Conditionnel**

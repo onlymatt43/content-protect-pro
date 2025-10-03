@@ -43,6 +43,9 @@ if ($giftcode_manager && isset($_POST['submit'])) {
             'expires_at' => sanitize_text_field($_POST['expires_at']),
             'status' => sanitize_text_field($_POST['status']),
             'description' => sanitize_textarea_field($_POST['description']),
+            // Optional per-code overlay image (attachment ID only) and purchase link
+            'overlay_image' => isset($_POST['overlay_image']) ? intval($_POST['overlay_image']) : 0,
+            'purchase_url' => isset($_POST['purchase_url']) ? esc_url_raw($_POST['purchase_url']) : '',
             'ip_restrictions' => sanitize_textarea_field($_POST['ip_restrictions'])
         );
         
@@ -99,7 +102,85 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
     </h1>
     
     <?php if ($action === 'add' || $action === 'edit'): ?>
+        <?php
+        // Show migration report if available
+        if (function_exists('get_option')) {
+            $report = get_option('cpp_migrations_overlay_report');
+            if (!empty($report) && is_array($report)) {
+                echo '<div class="notice notice-info"><p>' . sprintf(__('Overlay migration: %d migrated, %d cleared (run at %s).', 'content-protect-pro'), intval($report['migrated']), intval($report['cleared']), date('Y-m-d H:i:s', intval($report['run_at']))) . '</p></div>';
+            }
+        }
+
+        // Show transient notice if overlay was cleared during last save
+        if (function_exists('get_transient') && get_transient('cpp_overlay_cleared_notice')) {
+            echo '<div class="notice notice-warning is-dismissible"><p>' . __('Some overlay values were invalid and have been cleared. Please re-select an image from the Media Library.', 'content-protect-pro') . '</p></div>';
+            if (function_exists('delete_transient')) delete_transient('cpp_overlay_cleared_notice');
+        }
+        ?>
+        <!-- Migration runner form -->
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:10px;">
+            <?php wp_nonce_field('cpp_run_overlay_migration'); ?>
+            <input type="hidden" name="action" value="cpp_run_overlay_migration" />
+            <button type="submit" class="button button-secondary" style="margin-bottom:12px;"><?php _e('Run overlay URL -> attachment migration', 'content-protect-pro'); ?></button>
+        </form>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:6px;">
+            <?php wp_nonce_field('cpp_run_overlay_migration_dry'); ?>
+            <input type="hidden" name="action" value="cpp_run_overlay_migration_dry" />
+            <button type="submit" class="button" style="margin-bottom:12px; background:#f7f7f7;"><?php _e('Dry-run: Preview changes (no write)', 'content-protect-pro'); ?></button>
+        </form>
+        <?php
+        // Show immediate feedback if redirected after running migration
+        if (isset($_GET['cpp_migration']) && $_GET['cpp_migration'] === 'success') {
+            $m = isset($_GET['migrated']) ? intval($_GET['migrated']) : 0;
+            $c = isset($_GET['cleared']) ? intval($_GET['cleared']) : 0;
+            echo '<div class="notice notice-success"><p>' . sprintf(__('Migration completed: %d migrated, %d cleared.', 'content-protect-pro'), $m, $c) . '</p></div>';
+        } elseif (isset($_GET['cpp_migration']) && $_GET['cpp_migration'] === 'failed') {
+            echo '<div class="notice notice-error"><p>' . __('Migration failed. Check logs.', 'content-protect-pro') . '</p></div>';
+        }
+
+        // Dry-run feedback
+        if (isset($_GET['cpp_migration_dry']) && $_GET['cpp_migration_dry'] === 'success') {
+            $m = isset($_GET['migrated']) ? intval($_GET['migrated']) : 0;
+            $c = isset($_GET['cleared']) ? intval($_GET['cleared']) : 0;
+            echo '<div class="notice notice-info"><p>' . sprintf(__('Dry-run: %d would be migrated, %d would be cleared. (Samples available below)', 'content-protect-pro'), $m, $c) . '</p></div>';
+            if (function_exists('get_transient')) {
+                $samples = get_transient('cpp_migration_dry_samples');
+                if (!empty($samples) && is_array($samples)) {
+                    // If backup file was written, show link
+                    if (!empty($_GET['backup_file'])) {
+                        $bf = sanitize_text_field($_GET['backup_file']);
+                        $url = '';
+                        if (function_exists('wp_upload_dir')) {
+                            $uploads = wp_upload_dir();
+                            $url = trailingslashit($uploads['baseurl']) . 'content-protect-pro/backups/' . rawurlencode($bf);
+                        }
+                        if (empty($url) && defined('CPP_PLUGIN_URL')) {
+                            $url = rtrim(CPP_PLUGIN_URL, '/') . '/backups/' . rawurlencode($bf);
+                        }
+                        if (!empty($url)) {
+                            echo '<p><a href="' . esc_url($url) . '" class="button button-primary" target="_blank">' . __('Download saved JSON backup', 'content-protect-pro') . '</a></p>';
+                        }
+                    }
+                    echo '<h3>' . __('Sample affected rows', 'content-protect-pro') . '</h3>';
+                    // Download link (nonce-protected)
+                    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="display:inline-block; margin-bottom:8px;">';
+                    wp_nonce_field('cpp_download_dry_samples');
+                    echo '<input type="hidden" name="action" value="cpp_download_dry_samples" />';
+                    echo '<button class="button">' . __('Download JSON samples', 'content-protect-pro') . '</button>';
+                    echo '</form>';
+                    echo '<table class="widefat fixed striped"><thead><tr><th>ID</th><th>Overlay</th><th>Action</th><th>Attach ID</th></tr></thead><tbody>';
+                    foreach ($samples as $s) {
+                        echo '<tr><td>' . intval($s['id']) . '</td><td>' . esc_html($s['overlay']) . '</td><td>' . esc_html($s['action']) . '</td><td>' . intval($s['attach_id']) . '</td></tr>';
+                    }
+                    echo '</tbody></table>';
+                }
+            }
+        } elseif (isset($_GET['cpp_migration_dry']) && $_GET['cpp_migration_dry'] === 'failed') {
+            echo '<div class="notice notice-error"><p>' . __('Dry-run failed. Check logs.', 'content-protect-pro') . '</p></div>';
+        }
+        ?>
         <!-- Add/Edit Form -->
+        <?php if (function_exists('wp_enqueue_media')) { wp_enqueue_media(); } ?>
         <form method="post" action="">
             <?php wp_nonce_field('cpp_giftcode_nonce'); ?>
             
@@ -191,6 +272,47 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                         <p class="description"><?php _e('Optional description or notes about this gift code.', 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="overlay_image"><?php _e('Overlay Image (Optional)', 'content-protect-pro'); ?></label>
+                    </th>
+                    <td>
+                        <?php
+                        // Enforce attachment ID only. Show preview URL if attachment exists.
+                        $overlay_value = '';
+                        $overlay_preview = '';
+                        if ($edit_code && !empty($edit_code->overlay_image)) {
+                            if (ctype_digit((string) $edit_code->overlay_image)) {
+                                $overlay_value = intval($edit_code->overlay_image);
+                                $overlay_preview = function_exists('wp_get_attachment_url') ? wp_get_attachment_url($overlay_value) : '';
+                            } else {
+                                // Legacy non-numeric values will be migrated/cleared by migrations; don't accept here
+                                $overlay_value = '';
+                            }
+                        }
+                        ?>
+                        <!-- Store attachment ID only -->
+                        <input type="hidden" id="overlay_image" name="overlay_image" value="<?php echo esc_attr($overlay_value); ?>" />
+                        <button type="button" class="button" id="overlay_image_button"><?php _e('Upload/Select Image', 'content-protect-pro'); ?></button>
+                        <p class="description"><?php _e('Select a media library image (attachment ID will be stored). Legacy external URLs are no longer supported.', 'content-protect-pro'); ?></p>
+                        <div id="overlay_image_preview" style="margin-top:8px;">
+                            <?php if (!empty($overlay_preview)): ?>
+                                <img src="<?php echo esc_url($overlay_preview); ?>" alt="" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row">
+                        <label for="purchase_url"><?php _e('Purchase URL (Optional)', 'content-protect-pro'); ?></label>
+                    </th>
+                    <td>
+                        <input type="url" id="purchase_url" name="purchase_url" value="<?php echo $edit_code && !empty($edit_code->purchase_url) ? esc_attr($edit_code->purchase_url) : ''; ?>" class="regular-text" placeholder="https://example.com/buy" />
+                        <p class="description"><?php _e('Optional link users will be sent to when they click the overlay purchase button. Defaults to site home if empty.', 'content-protect-pro'); ?></p>
+                    </td>
+                </tr>
             </table>
             
             <p class="submit">
@@ -232,6 +354,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                             <input type="checkbox" />
                         </td>
                         <th class="manage-column column-code"><?php _e('Code', 'content-protect-pro'); ?></th>
+                        <th class="manage-column column-thumbnail"><?php _e('Thumbnail', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-duration"><?php _e('Duration', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-token"><?php _e('Token (Last 8)', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-sessions"><?php _e('Active Sessions', 'content-protect-pro'); ?></th>
@@ -256,6 +379,24 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                                         </div>
                                     <?php endif; ?>
                                 </td>
+                                <td class="column-thumbnail">
+                                    <?php
+                                    $thumb_url = '';
+                                    if (!empty($code->overlay_image)) {
+                                        if (ctype_digit((string) $code->overlay_image) && function_exists('wp_get_attachment_url')) {
+                                            $thumb_url = wp_get_attachment_url(intval($code->overlay_image));
+                                        } else {
+                                            // Defensive: if legacy URL still stored, use it (migration should clear most)
+                                            $thumb_url = esc_url($code->overlay_image);
+                                        }
+                                    }
+                                    if (!empty($thumb_url)): ?>
+                                        <img src="<?php echo esc_url($thumb_url); ?>" alt="" style="max-width:80px; height:auto; border-radius:4px; border:1px solid #eee;" />
+                                    <?php else: ?>
+                                        <span class="cpp-no-thumb"></span>
+                                    <?php endif; ?>
+                                </td>
+
                                 <td class="column-duration">
                                     <?php echo esc_html($code->duration_display ?: ($code->value . ' min')); ?>
                                 </td>
@@ -561,4 +702,48 @@ function sendBulkCodes(codes) {
         closeBulkModal();
     });
 }
+
+// Media uploader for overlay image (uses wp.media when available)
+document.addEventListener('DOMContentLoaded', function() {
+    var overlayBtn = document.getElementById('overlay_image_button');
+    if (!overlayBtn) return;
+
+    overlayBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+
+        // If wp.media is available, use the WordPress media frame
+        if (typeof wp !== 'undefined' && typeof wp.media === 'function') {
+            var frame = wp.media({
+                title: '<?php echo addslashes(__("Select Overlay Image", "content-protect-pro")); ?>',
+                button: { text: '<?php echo addslashes(__("Use Image", "content-protect-pro")); ?>' },
+                multiple: false
+            });
+
+            frame.on('select', function() {
+                var attachment = frame.state().get('selection').first().toJSON();
+                if (attachment) {
+                    var input = document.getElementById('overlay_image');
+                    // store the attachment id only; do not store remote URLs
+                    if (attachment.id) {
+                        input.value = attachment.id;
+                    } else {
+                        input.value = '';
+                    }
+                    var preview = document.getElementById('overlay_image_preview');
+                    if (attachment.url) {
+                        preview.innerHTML = '<img src="' + attachment.url + '" alt="" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />';
+                    } else {
+                        preview.innerHTML = '';
+                    }
+                }
+            });
+
+            frame.open();
+            return;
+        }
+
+        // No fallback allowed: require selecting from media library (attachment ID). Show a small alert if media frame not available.
+        alert('<?php echo addslashes(__('Please use the media library to select an image. External URLs are no longer supported.', 'content-protect-pro')); ?>');
+    });
+});
 </script>

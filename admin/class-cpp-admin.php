@@ -36,6 +36,12 @@ class CPP_Admin {
     public function __construct($plugin_name, $version) {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
+        // Register admin POST handler for migrations
+        add_action('admin_post_cpp_run_overlay_migration', array($this, 'handle_run_overlay_migration'));
+    // Register admin POST handler for dry-run
+    add_action('admin_post_cpp_run_overlay_migration_dry', array($this, 'handle_run_overlay_migration_dry'));
+    // Register download handler for dry-run samples
+    add_action('admin_post_cpp_download_dry_samples', array($this, 'handle_download_dry_samples'));
     }
 
     /**
@@ -80,6 +86,37 @@ class CPP_Admin {
                 )
             )
         );
+
+        // Only enqueue the Bunny helper script on the plugin settings page to avoid loading everywhere
+        global $pagenow;
+        $current_screen = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+        $settings_page = $this->plugin_name . '-settings';
+
+        if ($pagenow === 'admin.php' && $current_screen === $settings_page) {
+            // Enqueue bunny-specific admin helper script (handles Test Bunny Connection button)
+            wp_enqueue_script(
+                $this->plugin_name . '-bunny',
+                CPP_PLUGIN_URL . 'admin/js/cpp-admin-bunny.js',
+                array(),
+                $this->version,
+                true
+            );
+
+            wp_localize_script(
+                $this->plugin_name . '-bunny',
+                'cpp_admin_bunny',
+                array(
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce' => wp_create_nonce('cpp_test_bunny'),
+                    'strings' => array(
+                        'testing' => __('Testing...', 'content-protect-pro'),
+                        'success' => __('Connection successful', 'content-protect-pro'),
+                        'loading' => __('Loading...', 'content-protect-pro')
+                        , 'no_tests' => __('No recent tests found.', 'content-protect-pro')
+                    )
+                )
+            );
+        }
     }
 
     /**
@@ -209,6 +246,131 @@ class CPP_Admin {
             $this->plugin_name . '_analytics_settings',
             array($this, 'validate_analytics_settings')
         );
+    }
+
+    /**
+     * Handle admin POST to run overlay migration. Redirects back to giftcodes page with result.
+     */
+    public function handle_run_overlay_migration() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'content-protect-pro'));
+        }
+
+        check_admin_referer('cpp_run_overlay_migration');
+
+        if (!class_exists('CPP_Migrations')) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_migration=failed'));
+            exit;
+        }
+
+        $report = CPP_Migrations::run_overlay_migration();
+
+        if ($report === false) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_migration=failed'));
+            exit;
+        }
+
+        // Attach counts to query args for immediate feedback
+        $args = array(
+            'cpp_migration' => 'success',
+            'migrated' => isset($report['migrated']) ? intval($report['migrated']) : 0,
+            'cleared' => isset($report['cleared']) ? intval($report['cleared']) : 0,
+        );
+
+        wp_redirect(add_query_arg($args, admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes')));
+        exit;
+    }
+
+    /**
+     * Handle admin POST to run overlay migration dry-run. Redirects back with preview counts.
+     */
+    public function handle_run_overlay_migration_dry() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'content-protect-pro'));
+        }
+
+        check_admin_referer('cpp_run_overlay_migration_dry');
+
+        if (!class_exists('CPP_Migrations')) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_migration_dry=failed'));
+            exit;
+        }
+
+        $report = CPP_Migrations::run_overlay_migration_dry_run();
+
+        if ($report === false) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_migration_dry=failed'));
+            exit;
+        }
+
+        $args = array(
+            'cpp_migration_dry' => 'success',
+            'migrated' => isset($report['migrated']) ? intval($report['migrated']) : 0,
+            'cleared' => isset($report['cleared']) ? intval($report['cleared']) : 0,
+        );
+
+        // Store sample in transient for quick admin viewing
+        if (function_exists('set_transient')) {
+            set_transient('cpp_migration_dry_samples', $report['samples'], 60);
+        }
+
+        // Also write a copy to the WP uploads directory for audit and easier access
+        if (function_exists('wp_upload_dir')) {
+            $uploads = wp_upload_dir();
+            $backup_dir = trailingslashit($uploads['basedir']) . 'content-protect-pro/backups/';
+            if (!is_dir($backup_dir)) {
+                @mkdir($backup_dir, 0755, true);
+            }
+            $filename = 'cpp-dry-samples-' . date('YmdHis') . '.json';
+            $fullpath = $backup_dir . $filename;
+            $payload = array('generated_at' => time(), 'samples' => $report['samples'], 'migrated' => $report['migrated'], 'cleared' => $report['cleared']);
+            @file_put_contents($fullpath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $args['backup_file'] = $filename;
+
+            // Rotation: remove backups older than retention days (default 30)
+            $retention_days = 30;
+            $cutoff = time() - ($retention_days * 24 * 60 * 60);
+            $files = glob($backup_dir . 'cpp-dry-samples-*.json');
+            if ($files && is_array($files)) {
+                foreach ($files as $f) {
+                    if (filemtime($f) < $cutoff) {
+                        @unlink($f);
+                    }
+                }
+            }
+        }
+
+        wp_redirect(add_query_arg($args, admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes')));
+        exit;
+    }
+
+    /**
+     * Serve dry-run samples as a downloadable JSON file (nonce-protected).
+     */
+    public function handle_download_dry_samples() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'content-protect-pro'));
+        }
+
+        check_admin_referer('cpp_download_dry_samples');
+
+        if (!function_exists('get_transient')) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_download=failed'));
+            exit;
+        }
+
+        $samples = get_transient('cpp_migration_dry_samples');
+        if (empty($samples) || !is_array($samples)) {
+            wp_redirect(admin_url('admin.php?page=' . $this->plugin_name . '-giftcodes&cpp_download=empty'));
+            exit;
+        }
+
+        $filename = 'cpp-dry-samples-' . date('YmdHis') . '.json';
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo json_encode(array('generated_at' => time(), 'samples' => $samples), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        // Do not redirect; end request
+        exit;
     }
 
     /**

@@ -477,11 +477,44 @@ class CPP_Giftcode_Manager {
         }
         
         $storage_data = $data;
+
+        // Sanitize overlay/purchase fields if present
+        // Prefer attachment IDs for overlay_image. If a legacy URL was provided, attempt to resolve
+        // it to an attachment ID using attachment_url_to_postid(). If resolution fails, clear the value.
+        if (!empty($storage_data['overlay_image'])) {
+            // Numeric (attachment ID) ok
+            if (ctype_digit((string) $storage_data['overlay_image'])) {
+                $storage_data['overlay_image'] = intval($storage_data['overlay_image']);
+            } else {
+                // Try to resolve legacy URL to attachment ID when possible
+                $resolved = 0;
+                if (function_exists('attachment_url_to_postid')) {
+                    $resolved = attachment_url_to_postid($storage_data['overlay_image']);
+                }
+                if ($resolved && ctype_digit((string) $resolved)) {
+                    $storage_data['overlay_image'] = intval($resolved);
+                    $this->log_event('overlay_image_resolved', $data['code'], 'resolved_url_to_attachment');
+                } else {
+                    // Clear unknown/invalid values to enforce attachment IDs in storage
+                    $this->log_event('overlay_image_cleared', $data['code'], 'invalid_overlay_value_cleared');
+                    // Mark transient so admin UI can show a friendly notice after save
+                    if (function_exists('set_transient')) {
+                        set_transient('cpp_overlay_cleared_notice', true, 30);
+                    }
+                    $storage_data['overlay_image'] = '';
+                }
+            }
+        } else {
+            $storage_data['overlay_image'] = '';
+        }
+        if (!empty($storage_data['purchase_url'])) {
+            $storage_data['purchase_url'] = esc_url_raw($storage_data['purchase_url']);
+        }
         if (!empty($data['secure_token']) && class_exists('CPP_Encryption')) {
             $storage_data['secure_token'] = CPP_Encryption::encrypt($data['secure_token']);
         }
         
-        $allowed = array('code','secure_token','duration_minutes','duration_display','status','expires_at','description','ip_restrictions','created_at');
+    $allowed = array('code','secure_token','duration_minutes','duration_display','status','expires_at','description','ip_restrictions','created_at','overlay_image','purchase_url');
         $filtered = array();
         foreach ($storage_data as $k => $v) {
             if (in_array($k, $allowed, true)) {
@@ -502,6 +535,39 @@ class CPP_Giftcode_Manager {
         global $wpdb;
         $table_name = $wpdb->prefix . 'cpp_giftcodes';
         unset($data['id'], $data['created_at']);
+
+        // Sanitize overlay and purchase fields before updating - accept attachment IDs, or try to
+        // resolve legacy URLs to attachment IDs when possible.
+        if (isset($data['overlay_image']) && $data['overlay_image'] !== '') {
+            if (ctype_digit((string) $data['overlay_image'])) {
+                $data['overlay_image'] = intval($data['overlay_image']);
+            } else {
+                $resolved = 0;
+                if (function_exists('attachment_url_to_postid')) {
+                    $resolved = attachment_url_to_postid($data['overlay_image']);
+                }
+                if ($resolved && ctype_digit((string) $resolved)) {
+                    $data['overlay_image'] = intval($resolved);
+                    // Try to log with code if available
+                    $code = isset($data['code']) ? $data['code'] : $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
+                    $this->log_event('overlay_image_resolved', $code, 'resolved_url_to_attachment');
+                } else {
+                    $code = isset($data['code']) ? $data['code'] : $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
+                    $this->log_event('overlay_image_cleared', $code, 'invalid_overlay_value_cleared');
+                    if (function_exists('set_transient')) {
+                        set_transient('cpp_overlay_cleared_notice', true, 30);
+                    }
+                    $data['overlay_image'] = '';
+                }
+            }
+        } else {
+            // Ensure key exists and is empty string to avoid NULLs
+            $data['overlay_image'] = '';
+        }
+        if (!empty($data['purchase_url'])) {
+            $data['purchase_url'] = esc_url_raw($data['purchase_url']);
+        }
+
         $result = $wpdb->update($table_name, $data, array('id' => $id), null, array('%d'));
         if ($result !== false) {
             $code = $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));

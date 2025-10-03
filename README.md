@@ -116,6 +116,12 @@ A streamlined WordPress plugin that protects videos with gift codes using Presto
 - **Presto Player Integration**: Enable/disable Presto Player integration
 - **Default Access Level**: Default protection level for new videos
 
+### Overlay Image and Expiry Overlay
+- **Overlay Image (attachment-only)**: When a session expires the plugin can display an overlay image (for example a transparent PNG) and an optional purchase link. The plugin now requires that overlay images be selected from the WordPress Media Library — the code stores the media attachment ID rather than an external URL. This ensures images remain valid and under site control.
+- **Purchase URL**: The purchase link shown on the overlay is still a normal URL and is validated/sanitized on save.
+
+Migration note: If you previously used external overlay image URLs those values will be attempted to be migrated automatically to media attachment IDs (matching by attachment GUID or filename). Any legacy values that cannot be matched will be cleared during the migration. The plugin ships a migration routine that runs periodically; you can trigger it manually via WP-CLI (see Troubleshooting / Quick commands below).
+
 ### Security Settings
 - **Enable Logging**: Log all protection-related events
 - **Log Retention**: How long to keep log entries (1-365 days)
@@ -269,6 +275,12 @@ This plugin is open source and welcomes contributions:
 - Security and performance optimizations
 - **Simplified to Presto Player only** - removed complex Bunny CDN integration
 
+### Version 1.0.1
+- Enforce Media Library attachment IDs for overlay images (no longer accept external image URLs in admin UI).
+- Added migration that attempts to map legacy overlay URLs to media attachment IDs (matches by GUID and filename); non-matching legacy URLs are cleared to avoid stale external references.
+- Admin UI updated to use the WordPress media picker for overlay selection and store attachment IDs.
+- Front-end/localization: default overlay attachment IDs are resolved to URLs for the client-side overlay UI.
+
 ## License
 
 This plugin is licensed under the GPL v2 or later.
@@ -288,3 +300,18 @@ GNU General Public License for more details.
 ## Credits
 
 Content Protect Pro is a streamlined solution that focuses on essential video protection features using Presto Player. Built with ❤️ for the WordPress community.
+
+## Publishing to GitHub (one-time setup)
+
+If you want this repository pushed to GitHub and have the remote `https://github.com/onlymatt43/content-protect-pro.git`, run these commands from the plugin root:
+
+```bash
+git init
+git add .
+git commit -m "Initial import - content-protect-pro"
+git branch -M main
+git remote add origin https://github.com/onlymatt43/content-protect-pro.git
+git push -u origin main
+```
+
+The repository includes a GitHub Actions workflow (`.github/workflows/package-release.yml`) which will create a zip artifact of the plugin on every push to `main`. The artifact appears in the Actions run as `content-protect-pro-zip`.

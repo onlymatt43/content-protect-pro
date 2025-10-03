@@ -80,7 +80,15 @@ add_action('plugins_loaded', 'cpp_load_textdomain');
  * Initialize the plugin
  */
 function cpp_init() {
+    // Debug: log environment and compatibility check
+    if (function_exists('error_log')) {
+        error_log('[Content Protect Pro][DEBUG] cpp_init() running. PHP: ' . PHP_VERSION . ' WP: ' . (isset($GLOBALS['wp_version']) ? $GLOBALS['wp_version'] : 'unknown'));
+    }
+
     if (!cpp_check_compatibility()) {
+        if (function_exists('error_log')) {
+            error_log('[Content Protect Pro][DEBUG] cpp_check_compatibility() returned FALSE — aborting cpp_init');
+        }
         return;
     }
 
@@ -89,7 +97,28 @@ function cpp_init() {
     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-activator.php';
     require_once CPP_PLUGIN_DIR . 'includes/class-cpp-deactivator.php';
     require_once CPP_PLUGIN_DIR . 'includes/class-content-protect-pro.php';
-    
+    // Load core files
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-loader.php';
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-activator.php';
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-deactivator.php';
+    require_once CPP_PLUGIN_DIR . 'includes/class-content-protect-pro.php';
+    // Load helper functions
+    require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
+    // ⭐️ Load shortcodes & frontend rendering
+    if (file_exists(CPP_PLUGIN_DIR . 'includes/cpp-shortcodes.php')) {
+        if (function_exists('error_log')) {
+            error_log('[Content Protect Pro][DEBUG] requiring includes/cpp-shortcodes.php');
+        }
+        require_once CPP_PLUGIN_DIR . 'includes/cpp-shortcodes.php';
+    } else {
+        if (function_exists('error_log')) {
+            error_log('[Content Protect Pro][DEBUG] includes/cpp-shortcodes.php not found');
+        }
+    }
+    // REST endpoints for library (redeem / request-playback)
+    if (file_exists(CPP_PLUGIN_DIR . 'includes/cpp-rest-api.php')) {
+        require_once CPP_PLUGIN_DIR . 'includes/cpp-rest-api.php';
+    }
     // Load helper functions
     require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
 

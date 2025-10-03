@@ -253,6 +253,60 @@ function cpp_create_session($code, $duration_minutes, $secure_token) {
 }
 
 /**
+ * Create a server-side playback token stored in wp_cpp_tokens
+ *
+ * @param string $video_id Optional video id to tie the token
+ * @param int $expiry_seconds Lifetime of token in seconds
+ * @param int $user_id Optional user id
+ * @return array|false ['token' => ..., 'expires_at' => timestamp] or false
+ */
+function cpp_create_playback_token($video_id = '', $expiry_seconds = 900, $user_id = 0) {
+    global $wpdb;
+    if (empty($expiry_seconds)) $expiry_seconds = 900;
+
+    if (!class_exists('CPP_Migrations')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
+    }
+    if (class_exists('CPP_Migrations')) {
+        CPP_Migrations::maybe_migrate();
+    }
+
+    $token = bin2hex(random_bytes(32));
+    $expires_at = time() + $expiry_seconds;
+    $ip_addr = cpp_get_client_ip();
+    $table = $wpdb->prefix . 'cpp_tokens';
+
+    $ok = $wpdb->insert($table, array(
+        'token' => $token,
+        'user_id' => intval($user_id),
+        'video_id' => $video_id,
+        'ip_address' => $ip_addr,
+        'expires_at' => date('Y-m-d H:i:s', $expires_at),
+    ), array('%s','%d','%s','%s','%s'));
+
+    if ($ok === false) return false;
+
+    return array('token' => $token, 'expires_at' => $expires_at);
+}
+
+/**
+ * Validate a playback token
+ *
+ * @param string $token
+ * @return object|false DB row object on success, false on failure
+ */
+function cpp_validate_playback_token($token) {
+    if (empty($token)) return false;
+    global $wpdb;
+    $table = $wpdb->prefix . 'cpp_tokens';
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE token = %s LIMIT 1", $token));
+    if (!$row) return false;
+    if (strtotime($row->expires_at) < time()) return false;
+    // Optional IP check will be handled by caller
+    return $row;
+}
+
+/**
  * Validate an existing session
  *
  * @param string $code Gift code

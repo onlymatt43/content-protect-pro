@@ -27,6 +27,13 @@ class CPP_Public {
     private $version;
 
     /**
+     * Ensure modal markup is only printed once per page.
+     *
+     * @var bool
+     */
+    private static $modal_printed = false;
+
+    /**
      * Initialize the class and set its properties
      *
      * @param string $plugin_name The name of the plugin
@@ -68,6 +75,28 @@ class CPP_Public {
             true
         );
 
+        // Enqueue gallery styles
+        wp_enqueue_style(
+            $this->plugin_name . '-gallery',
+            CPP_PLUGIN_URL . 'public/css/cpp-public-gallery.css',
+            array(),
+            $this->version
+        );
+
+        // Load integration settings so we can provide a default overlay image URL
+        $integration_settings = get_option('cpp_integration_settings', array());
+
+        // Resolve integration overlay attachment ID to URL if needed
+        $default_overlay = '';
+        if (!empty($integration_settings['overlay_image'])) {
+            if (ctype_digit((string) $integration_settings['overlay_image']) && function_exists('wp_get_attachment_url')) {
+                $default_overlay = wp_get_attachment_url(intval($integration_settings['overlay_image']));
+            } else {
+                // Defensive fallback: empty - we no longer accept external URLs
+                $default_overlay = '';
+            }
+        }
+
         wp_localize_script(
             $this->plugin_name,
             'cpp_public_ajax',
@@ -80,7 +109,12 @@ class CPP_Public {
                     'used_code' => __('This gift code has already been used.', 'content-protect-pro'),
                     'loading' => __('Loading...', 'content-protect-pro'),
                     'error' => __('An error occurred. Please try again.', 'content-protect-pro'),
-                )
+                    'overlay_expired' => __('Session expired', 'content-protect-pro'),
+                    'overlay_prompt' => __('Your session has ended. Purchase more minutes to continue watching.', 'content-protect-pro'),
+                    'overlay_buy' => __('Buy more minutes', 'content-protect-pro'),
+                ),
+                // global overlay image (attachment ID resolved to URL)
+                'overlay_image' => $default_overlay
             )
         );
     }
@@ -169,30 +203,47 @@ class CPP_Public {
                        '</div>';
             }
             
-            // Validate the gift code
-            if (!session_id()) {
-                session_start();
+            // Validate the gift code (server-side token flow)
+            // Load gift code manager to validate
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
+            $giftcode_manager = new CPP_Giftcode_Manager();
+            $validation = $giftcode_manager->validate_code($atts['code']);
+            
+            if (!$validation['valid']) {
+                return '<div class="cpp-protected-content">' .
+                       __('Invalid or expired gift code.', 'content-protect-pro') .
+                       '</div>';
             }
-            $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
 
-            if (!in_array($atts['code'], $session_codes)) {
-                // Load gift code manager to validate
-                require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
-                $giftcode_manager = new CPP_Giftcode_Manager();
-                $validation = $giftcode_manager->validate_code($atts['code']);
-                
-                if (!$validation['valid']) {
-                    return '<div class="cpp-protected-content">' .
-                           __('Invalid or expired gift code.', 'content-protect-pro') .
-                           '</div>';
-                }
-                
-                // Code is valid, add to session
-                if (!isset($_SESSION['cpp_validated_codes'])) {
-                    $_SESSION['cpp_validated_codes'] = array();
-                }
-                $_SESSION['cpp_validated_codes'][] = $atts['code'];
+            // Create a short-lived server-side token tied to this video and set cookie
+            global $wpdb;
+            if (!class_exists('CPP_Migrations')) {
+                require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
             }
+            if (class_exists('CPP_Migrations')) {
+                CPP_Migrations::maybe_migrate();
+            }
+
+            $integration_settings = get_option('cpp_integration_settings', array());
+            $expiry_seconds = isset($integration_settings['token_expiry']) ? intval($integration_settings['token_expiry']) : 900;
+            $expires_at = time() + max(60, $expiry_seconds);
+            $token = bin2hex(random_bytes(32));
+            $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+            $table = $wpdb->prefix . 'cpp_tokens';
+            $ip_addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+            $wpdb->insert($table, array(
+                'token' => $token,
+                'user_id' => $user_id,
+                'video_id' => $video_id,
+                'expires_at' => date('Y-m-d H:i:s', $expires_at),
+                'ip_address' => $ip_addr,
+            ), array('%s','%d','%s','%s','%s'));
+
+            // Set HttpOnly secure cookie for front-end to send with requests
+            $secure = is_ssl();
+            $cookie_path = defined('COOKIEPATH') ? COOKIEPATH : '/';
+            $cookie_domain = defined('COOKIE_DOMAIN') ? COOKIE_DOMAIN : '';
+            setcookie('cpp_playback_token', $token, $expires_at, $cookie_path, $cookie_domain, $secure, true);
         }
 
         // Video is accessible, return Presto Player shortcode
@@ -213,10 +264,17 @@ class CPP_Public {
             'failure_content' => __('Please enter a valid gift code to access this content.', 'content-protect-pro'),
         ), $atts, 'cpp_giftcode_check');
 
-        if (!session_id()) {
-            session_start();
+        // Check for server-side playback token cookie
+        $has_valid_token = false;
+        if (!empty($_COOKIE['cpp_playback_token'])) {
+            $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+            global $wpdb;
+            $table = $wpdb->prefix . 'cpp_tokens';
+            $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE token = %s LIMIT 1", $token));
+            if ($row && strtotime($row->expires_at) >= time()) {
+                $has_valid_token = true;
+            }
         }
-        $session_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
         $required_codes = !empty($atts['required_codes']) ? explode(',', $atts['required_codes']) : array();
         
         $has_valid_code = false;
@@ -231,7 +289,7 @@ class CPP_Public {
             $has_valid_code = !empty($session_codes);
         }
 
-        if ($has_valid_code) {
+        if ($has_valid_code || $has_valid_token) {
             return do_shortcode($atts['success_content']);
         } else {
             return '<div class="cpp-protected-content">' . $atts['failure_content'] . '</div>';
@@ -293,45 +351,56 @@ class CPP_Public {
             <div class="cpp-video-grid" data-columns="<?php echo esc_attr($atts['columns']); ?>">
                 <?php if (!empty($videos)): ?>
                     <?php foreach ($videos as $video): ?>
-                        <div class="cpp-video-item"
-                             data-video-id="<?php echo esc_attr($video->video_id); ?>"
-                             data-integration="<?php
-                                 if (!empty($video->presto_player_id)) echo 'presto';
-                                 else echo 'direct';
-                             ?>">
+                        <?php
+                        // Determine thumbnail (prefer featured image of the presto post)
+                        $thumb_url = '';
+                        $link_url = '';
+                        $post_obj = null;
+                        if (!empty($video->video_id)) {
+                            $post_obj = get_post(intval($video->video_id));
+                        }
+                        if ($post_obj) {
+                            $thumb_url = get_the_post_thumbnail_url($post_obj, 'medium');
+                            $link_url = get_permalink($post_obj);
+                        }
+                        // Fallback: try direct thumbnail meta or placeholder
+                        if (empty($thumb_url) && !empty($video->thumbnail_url)) {
+                            $thumb_url = esc_url($video->thumbnail_url);
+                        }
+                        if (empty($link_url)) {
+                            $link_url = esc_url(add_query_arg('cpp_video', $video->video_id, home_url('/')));
+                        }
+                        ?>
 
-                            <div class="cpp-video-thumbnail">
-                                <!-- Placeholder for video thumbnail -->
-                                <div class="cpp-video-placeholder">
-                                    <span class="dashicons dashicons-video-alt3"></span>
-                                    <span class="cpp-video-title"><?php echo esc_html($video->title); ?></span>
-                                </div>
-                            </div>
-
-                            <div class="cpp-video-info">
-                                <h4><?php echo esc_html($video->title); ?></h4>
-                                <?php if (!empty($video->description)): ?>
-                                    <p><?php echo esc_html(wp_trim_words($video->description, 15)); ?></p>
-                                <?php endif; ?>
-
-                                <div class="cpp-video-meta">
-                                    <?php if (!empty($video->presto_player_id)): ?>
-                                        <span class="cpp-integration-badge cpp-presto"><?php _e('Presto Player', 'content-protect-pro'); ?></span>
+                        <div class="cpp-video-item" data-video-id="<?php echo esc_attr($video->video_id); ?>" data-integration="<?php echo esc_attr(!empty($video->presto_player_id) ? 'presto' : 'direct'); ?>">
+                            <!-- Use a button (non-navigating) and explicit data-video-id to avoid accidental navigation to login pages -->
+                            <button class="cpp-video-link" type="button" role="button" data-video-id="<?php echo esc_attr($video->video_id); ?>" data-link="<?php echo esc_attr($link_url); ?>">
+                                <div class="cpp-video-thumbnail">
+                                    <?php if (!empty($thumb_url)): ?>
+                                        <img src="<?php echo esc_url($thumb_url); ?>" alt="<?php echo esc_attr($video->title); ?>" />
                                     <?php else: ?>
-                                        <span class="cpp-integration-badge cpp-direct"><?php _e('Direct URL', 'content-protect-pro'); ?></span>
-                                    <?php endif; ?>
-
-                                    <?php if ($video->requires_giftcode): ?>
-                                        <span class="cpp-requires-code"><?php _e('Code requis', 'content-protect-pro'); ?></span>
+                                        <div class="cpp-video-placeholder">
+                                            <span class="dashicons dashicons-video-alt3"></span>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
-
-                                <div class="cpp-video-actions">
-                                    <button class="cpp-watch-btn" data-video-id="<?php echo esc_attr($video->video_id); ?>">
-                                        <?php _e('Regarder', 'content-protect-pro'); ?>
-                                    </button>
+                                <div class="cpp-video-info">
+                                    <h4><?php echo esc_html($video->title); ?></h4>
+                                    <?php if (!empty($video->description)): ?>
+                                        <p><?php echo esc_html(wp_trim_words($video->description, 15)); ?></p>
+                                    <?php endif; ?>
+                                    <div class="cpp-video-meta">
+                                        <?php if (!empty($video->presto_player_id)): ?>
+                                            <span class="cpp-integration-badge cpp-presto"><?php _e('Presto Player', 'content-protect-pro'); ?></span>
+                                        <?php else: ?>
+                                            <span class="cpp-integration-badge cpp-direct"><?php _e('Direct URL', 'content-protect-pro'); ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($video->requires_giftcode): ?>
+                                            <span class="cpp-requires-code"><?php _e('Code requis', 'content-protect-pro'); ?></span>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
-                            </div>
+                            </button>
                         </div>
                     <?php endforeach; ?>
                 <?php else: ?>
@@ -347,104 +416,26 @@ class CPP_Public {
                 <?php endif; ?>
             </div>
 
-            <!-- Video Modal -->
-            <div id="cpp-video-modal" class="cpp-modal" style="display: none;">
-                <div class="cpp-modal-overlay" onclick="closeVideoModal()"></div>
-                <div class="cpp-modal-content">
-                    <div class="cpp-modal-header">
-                        <h3 id="cpp-modal-title"></h3>
-                        <button class="cpp-modal-close" onclick="closeVideoModal()">&times;</button>
-                    </div>
-                    <div class="cpp-modal-body">
-                        <div id="cpp-modal-video-container">
-                            <!-- Video player will be loaded here -->
+            <?php if (!self::$modal_printed): ?>
+                <!-- Video Modal (styling-friendly for page builders like Breakdance) - printed once -->
+                <div id="cpp-video-modal" class="cpp-modal" aria-hidden="true">
+                    <div class="cpp-modal-overlay"></div>
+                    <div class="cpp-modal-content" role="dialog" aria-modal="true">
+                        <div class="cpp-modal-header">
+                            <h3 id="cpp-modal-title"></h3>
+                            <button class="cpp-modal-close" type="button" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="cpp-modal-body">
+                            <div id="cpp-modal-video-container" class="cpp-modal-inner">
+                                <!-- Video player will be loaded here -->
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+                <?php self::$modal_printed = true; ?>
+            <?php endif; ?>
 
-        <script>
-        jQuery(document).ready(function($) {
-            // Search functionality
-            $('#cpp-video-search').on('input', function() {
-                const searchTerm = $(this).val().toLowerCase();
-                $('.cpp-video-item').each(function() {
-                    const title = $(this).find('h4').text().toLowerCase();
-                    const description = $(this).find('p').text().toLowerCase();
-                    if (title.includes(searchTerm) || description.includes(searchTerm)) {
-                        $(this).show();
-                    } else {
-                        $(this).hide();
-                    }
-                });
-            });
-
-            // Filter functionality
-            $('.cpp-filter-btn').on('click', function() {
-                $('.cpp-filter-btn').removeClass('active');
-                $(this).addClass('active');
-
-                const filter = $(this).data('filter');
-                if (filter === 'all') {
-                    $('.cpp-video-item').show();
-                } else {
-                    $('.cpp-video-item').each(function() {
-                        const integration = $(this).data('integration');
-                        if (integration === filter) {
-                            $(this).show();
-                        } else {
-                            $(this).hide();
-                        }
-                    });
-                }
-            });
-
-            // Watch video button
-            $('.cpp-watch-btn').on('click', function() {
-                const videoId = $(this).data('video-id');
-                openVideoModal(videoId);
-            });
-        });
-
-        function openVideoModal(videoId) {
-            // Get video details via AJAX
-            jQuery.ajax({
-                url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                method: 'POST',
-                data: {
-                    action: 'cpp_get_video_token',
-                    video_id: videoId,
-                    nonce: '<?php echo wp_create_nonce('cpp_public_nonce'); ?>'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        // Load video player
-                        let videoHtml = '';
-
-                        if (response.data.provider === 'presto' && response.data.presto_embed) {
-                            videoHtml = response.data.presto_embed;
-                        } else {
-                            videoHtml = '<p><?php _e('Lecteur vidéo non disponible.', 'content-protect-pro'); ?></p>';
-                        }
-
-                        jQuery('#cpp-modal-video-container').html(videoHtml);
-                        jQuery('#cpp-video-modal').show();
-                    } else {
-                        alert('<?php _e('Erreur:', 'content-protect-pro'); ?> ' + response.data.message);
-                    }
-                },
-                error: function() {
-                    alert('<?php _e('Erreur de chargement de la vidéo.', 'content-protect-pro'); ?>');
-                }
-            });
-        }
-
-        function closeVideoModal() {
-            jQuery('#cpp-video-modal').hide();
-            jQuery('#cpp-modal-video-container').empty();
-        }
-        </script>
+            <!-- Inline scripts removed: handled centrally by public/js/cpp-public.js -->
         <?php
         return ob_get_clean();
     }
@@ -470,17 +461,36 @@ class CPP_Public {
         $result = $giftcode_manager->validate_code($code);
         
         if ($result['valid']) {
-            // Start session if not already started
-            if (!session_id()) {
-                session_start();
+            // Create server-side playback token and set cookie
+            global $wpdb;
+            if (!class_exists('CPP_Migrations')) {
+                require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
             }
-            
-            // Store validated code in session
-            if (!isset($_SESSION['cpp_validated_codes'])) {
-                $_SESSION['cpp_validated_codes'] = array();
+            if (class_exists('CPP_Migrations')) {
+                CPP_Migrations::maybe_migrate();
             }
-            $_SESSION['cpp_validated_codes'][] = $code;
-            
+
+            $integration_settings = get_option('cpp_integration_settings', array());
+            $expiry_seconds = isset($integration_settings['token_expiry']) ? intval($integration_settings['token_expiry']) : 900;
+            $expires_at = time() + max(60, $expiry_seconds);
+            $token = bin2hex(random_bytes(32));
+            $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+            $table = $wpdb->prefix . 'cpp_tokens';
+            $ip_addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+            $wpdb->insert($table, array(
+                'token' => $token,
+                'user_id' => $user_id,
+                'video_id' => '',
+                'expires_at' => date('Y-m-d H:i:s', $expires_at),
+                'ip_address' => $ip_addr,
+            ), array('%s','%d','%s','%s','%s'));
+
+            // Set cookie
+            $secure = is_ssl();
+            $cookie_path = defined('COOKIEPATH') ? COOKIEPATH : '/';
+            $cookie_domain = defined('COOKIE_DOMAIN') ? COOKIE_DOMAIN : '';
+            setcookie('cpp_playback_token', $token, $expires_at, $cookie_path, $cookie_domain, $secure, true);
+
             wp_send_json_success(array(
                 'message' => __('Gift code validated successfully!', 'content-protect-pro'),
                 'redirect_url' => $result['redirect_url']
@@ -570,10 +580,159 @@ class CPP_Public {
         }
 
         if (!empty($response)) {
+            // Try to include per-session overlay/purchase info if available
+            $overlay_image = '';
+            $purchase_url = '';
+
+            // Look for legacy session cookie names starting with cpp_session_
+            foreach ($_COOKIE as $k => $v) {
+                if (strpos($k, 'cpp_session_') === 0) {
+                    $cookie_data = json_decode(base64_decode($v), true);
+                    if ($cookie_data && !empty($cookie_data['session_id'])) {
+                        global $wpdb;
+                        $sess = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}cpp_sessions WHERE session_id = %s LIMIT 1", $cookie_data['session_id']));
+                        if ($sess && !empty($sess->code)) {
+                            $code = $sess->code;
+                            $gift_table = $wpdb->prefix . 'cpp_giftcodes';
+                            $gc = $wpdb->get_row($wpdb->prepare("SELECT overlay_image, purchase_url FROM {$gift_table} WHERE code = %s LIMIT 1", $code));
+                            if ($gc) {
+                                $overlay_image = $gc->overlay_image;
+                                $purchase_url = $gc->purchase_url;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!$overlay_image && !empty($integration_settings['overlay_image'])) {
+                $overlay_image = $integration_settings['overlay_image'];
+            }
+            if (!$purchase_url && !empty($integration_settings['purchase_url'])) {
+                $purchase_url = $integration_settings['purchase_url'];
+            }
+
+            // If overlay_image is an attachment ID, convert to URL
+            if ($overlay_image) {
+                if (ctype_digit((string) $overlay_image) && function_exists('wp_get_attachment_url')) {
+                    $ov = wp_get_attachment_url(intval($overlay_image));
+                    if ($ov) $response['overlay_image'] = esc_url($ov);
+                } else {
+                    $response['overlay_image'] = esc_url($overlay_image);
+                }
+            }
+            if ($purchase_url) $response['purchase_url'] = esc_url($purchase_url);
+
             wp_send_json_success($response);
         }
 
-        wp_send_json_error(array('message' => __('Unable to generate video access details.', 'content-protect-pro')));
+        $error_payload = array('message' => __('Unable to generate video access details.', 'content-protect-pro'));
+
+        // Optional, opt-in debug information for administrators/testing. Enable by setting
+        // the `cpp_enable_debug_ajax` option to 1 (use WP-CLI: `wp option update cpp_enable_debug_ajax 1`).
+        // This is intentionally opt-in to avoid exposing internal state by default.
+        $debug_enabled = get_option('cpp_enable_debug_ajax', 0);
+        if ($debug_enabled) {
+            $debug = array();
+            $debug['video_row'] = isset($video_row) && $video_row ? (array) $video_row : null;
+            $debug['has_token'] = !empty($token) ? true : false;
+            $debug['cookie_cpp_playback_token'] = isset($_COOKIE['cpp_playback_token']) ? sanitize_text_field($_COOKIE['cpp_playback_token']) : null;
+            $error_payload['debug'] = $debug;
+        }
+
+        wp_send_json_error($error_payload);
+    }
+
+    /**
+     * AJAX handler to return a small preview HTML for the requested video.
+     * This is used by the public gallery modal to show a quick preview (Presto embed if available,
+     * otherwise a thumbnail + title/description).
+     *
+     * @since 1.0.0
+     */
+    public function get_video_preview() {
+        check_ajax_referer('cpp_public_nonce', 'nonce');
+
+        $video_id = sanitize_text_field($_POST['video_id'] ?? '');
+        if (empty($video_id)) {
+            wp_send_json_error(array('message' => __('Video ID is required.', 'content-protect-pro')));
+        }
+
+        if (!class_exists('CPP_Video_Manager')) {
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
+        }
+        $video_manager = new CPP_Video_Manager();
+        $video_row = $video_manager->get_protected_video($video_id);
+
+        if (!$video_row) {
+            wp_send_json_error(array('message' => __('Video not found.', 'content-protect-pro')));
+        }
+
+        // Try to build a small preview: prefer Presto embed (allow it to be interactive but short-lived)
+        $preview_html = '';
+        if (!empty($video_row->presto_player_id)) {
+            $presto_id = intval($video_row->presto_player_id);
+            $embed_html = do_shortcode('[presto_player id="' . $presto_id . '" preview="true"]');
+            if (!empty($embed_html)) {
+                $preview_html = $embed_html;
+            }
+        }
+
+        // Fallback: thumbnail + title/description
+        if (empty($preview_html)) {
+            $thumb = '';
+            if (!empty($video_row->thumbnail_url)) {
+                $thumb = esc_url($video_row->thumbnail_url);
+            } elseif (!empty($video_row->video_id)) {
+                $post_obj = get_post(intval($video_row->video_id));
+                if ($post_obj) {
+                    $thumb = get_the_post_thumbnail_url($post_obj, 'medium');
+                }
+            }
+
+            $title = !empty($video_row->title) ? esc_html($video_row->title) : __('Video Preview', 'content-protect-pro');
+            $desc = !empty($video_row->description) ? esc_html(wp_trim_words($video_row->description, 25)) : '';
+
+            $preview_html = '<div class="cpp-preview-card">';
+            if ($thumb) {
+                $preview_html .= '<div class="cpp-preview-thumb"><img src="' . esc_url($thumb) . '" alt="' . esc_attr($title) . '" /></div>';
+            }
+            $preview_html .= '<div class="cpp-preview-meta"><h4>' . $title . '</h4>';
+            if ($desc) $preview_html .= '<p>' . $desc . '</p>';
+            $preview_html .= '</div></div>';
+        }
+
+        wp_send_json_success(array('html' => $preview_html, 'title' => $video_row->title ?? ''));
+    }
+
+    /**
+     * AJAX handler to return remaining session seconds for the current user/session.
+     * Used by the front-end SessionMonitor polling.
+     *
+     * @since 1.0.0
+     */
+    public function get_session_remaining() {
+        check_ajax_referer('cpp_public_nonce', 'nonce');
+
+        $response = array('valid' => false, 'remaining_seconds' => 0);
+
+        // If server-side playback token exists, validate it
+        if (!empty($_COOKIE['cpp_playback_token'])) {
+            global $wpdb;
+            $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+            $table = $wpdb->prefix . 'cpp_tokens';
+            $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE token = %s LIMIT 1", $token));
+            if ($row) {
+                $expires = strtotime($row->expires_at);
+                $remaining = max(0, $expires - time());
+                $response['valid'] = $remaining > 0;
+                $response['remaining_seconds'] = intval($remaining);
+                wp_send_json_success($response);
+            }
+        }
+
+        // No valid token found
+        wp_send_json_success($response);
     }
 
     /**

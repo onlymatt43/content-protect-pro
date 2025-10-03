@@ -1,0 +1,27 @@
+name: Package Release
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up ZIP
+        run: |
+          mkdir -p release
+          PLUGIN_NAME="content-protect-pro"
+          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+          ZIPNAME="${PLUGIN_NAME}-${TIMESTAMP}.zip"
+          # exclude development/backups folders
+          zip -r release/${ZIPNAME} . -x "**/.git/**" "**/backups/**" "**/.github/**" "**/node_modules/**" "**/vendor/**" "**/.idea/**" "**/.vscode/**"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-protect-pro-zip
+          path: release/*.zip

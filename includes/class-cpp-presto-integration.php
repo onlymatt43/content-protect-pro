@@ -234,16 +234,21 @@ class CPP_Presto_Integration {
             $validation_result = $giftcode_manager->validate_code($access_code);
             
             if ($validation_result['valid']) {
-                // Store validated code in session
-                if (!session_id()) {
-                    session_start();
+                // Create server-side playback token and set cookie
+                if (!function_exists('cpp_create_playback_token')) {
+                    require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
                 }
-                
-                if (!isset($_SESSION['cpp_validated_codes'])) {
-                    $_SESSION['cpp_validated_codes'] = array();
+                $integration_settings = get_option('cpp_integration_settings', array());
+                $expiry_seconds = isset($integration_settings['token_expiry']) ? intval($integration_settings['token_expiry']) : 900;
+                $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+                $token_data = cpp_create_playback_token($video_id, $expiry_seconds, $user_id);
+                if ($token_data) {
+                    $secure = is_ssl();
+                    $cookie_path = defined('COOKIEPATH') ? COOKIEPATH : '/';
+                    $cookie_domain = defined('COOKIE_DOMAIN') ? COOKIE_DOMAIN : '';
+                    setcookie('cpp_playback_token', $token_data['token'], $token_data['expires_at'], $cookie_path, $cookie_domain, $secure, true);
                 }
-                $_SESSION['cpp_validated_codes'][] = $access_code;
-                
+
                 wp_send_json_success(array(
                     'message' => __('Access granted!', 'content-protect-pro'),
                     'reload_player' => true
@@ -322,6 +327,17 @@ class CPP_Presto_Integration {
 
         // Check gift code requirement
         if ($settings['require_giftcode']) {
+            // Prefer server-side playback token
+            if (!empty($_COOKIE['cpp_playback_token'])) {
+                if (!function_exists('cpp_validate_playback_token')) {
+                    require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
+                }
+                $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+                $row = cpp_validate_playback_token($token);
+                if ($row) return true;
+            }
+
+            // Legacy session fallback
             if (!session_id()) {
                 session_start();
             }

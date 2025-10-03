@@ -28,6 +28,7 @@ class CPP_Video_Manager {
             'protection_type' => 'token',
             'bunny_library_id' => '',
             'presto_player_id' => '',
+            'required_minutes' => 60,
             'access_level' => 'public',
             'requires_giftcode' => 0,
             'allowed_giftcodes' => '',
@@ -50,11 +51,12 @@ class CPP_Video_Manager {
                 'protection_type' => $data['protection_type'],
                 'bunny_library_id' => $data['bunny_library_id'],
                 'presto_player_id' => $data['presto_player_id'],
+                'required_minutes' => intval($data['required_minutes']),
                 'access_level' => $data['access_level'],
                 'requires_giftcode' => intval($data['requires_giftcode']),
                 'allowed_giftcodes' => $data['allowed_giftcodes'],
             ),
-            array('%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s')
+            array('%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%s')
         );
         
         if ($result) {
@@ -176,7 +178,7 @@ class CPP_Video_Manager {
         
         $allowed_fields = array(
             'title', 'protection_type', 'bunny_library_id', 'presto_player_id',
-            'access_level', 'requires_giftcode', 'allowed_giftcodes'
+            'access_level', 'requires_giftcode', 'allowed_giftcodes', 'required_minutes'
         );
         
         $update_data = array();
@@ -378,10 +380,26 @@ class CPP_Video_Manager {
 
         // Check gift code requirement
         if ($video->requires_giftcode) {
+            // Prefer server-side playback token cookie
+            $has_valid_token = false;
+            if (!empty($_COOKIE['cpp_playback_token'])) {
+                $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+                if (function_exists('cpp_validate_playback_token')) {
+                    $row = cpp_validate_playback_token($token);
+                    if ($row) {
+                        $has_valid_token = true;
+                    }
+                }
+            }
+
+            if ($has_valid_token) {
+                return true;
+            }
+
+            // Legacy session fallback
             if (!session_id()) {
                 session_start();
             }
-            
             $validated_codes = isset($_SESSION['cpp_validated_codes']) ? $_SESSION['cpp_validated_codes'] : array();
             
             if (empty($validated_codes)) {

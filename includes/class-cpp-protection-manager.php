@@ -281,10 +281,18 @@ class CPP_Protection_Manager {
             'message' => __('Please enter a valid gift code to access this content.', 'content-protect-pro'),
         ), $atts);
         
-        // Check if user has already validated access (session-based)
-        if (!session_id()) { session_start(); }
-        $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
-        if (!empty($session_codes)) {
+        // Check if user has already validated access (prefer server-side token cookie)
+        $has_valid_token = false;
+        if (!empty($_COOKIE['cpp_playback_token'])) {
+            if (!function_exists('cpp_validate_playback_token')) {
+                require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
+            }
+            $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+            $row = cpp_validate_playback_token($token);
+            if ($row) { $has_valid_token = true; }
+        }
+
+        if ($has_valid_token) {
             return do_shortcode($content);
         }
         
@@ -377,7 +385,19 @@ class CPP_Protection_Manager {
             return $content;
         }
         
-        // Check if user has access (session-based)
+        // Check if user has access (prefer server-side token cookie)
+        if (!empty($_COOKIE['cpp_playback_token'])) {
+            if (!function_exists('cpp_validate_playback_token')) {
+                require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
+            }
+            $token = sanitize_text_field($_COOKIE['cpp_playback_token']);
+            $row = cpp_validate_playback_token($token);
+            if ($row) {
+                return $content;
+            }
+        }
+
+        // Legacy session fallback
         if (!session_id()) { session_start(); }
         $session_codes = isset($_SESSION['cpp_validated_codes']) ? (array) $_SESSION['cpp_validated_codes'] : array();
         if (!empty($session_codes)) {

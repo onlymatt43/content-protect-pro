@@ -144,6 +144,14 @@ class Content_Protect_Pro {
         $this->loader->add_action('wp_ajax_cpp_get_video_token', $plugin_public, 'get_video_token');
         $this->loader->add_action('wp_ajax_nopriv_cpp_get_video_token', $plugin_public, 'get_video_token');
 
+    // AJAX handler to retrieve a small preview HTML for the video (used by the public gallery modal)
+    $this->loader->add_action('wp_ajax_cpp_get_video_preview', $plugin_public, 'get_video_preview');
+    $this->loader->add_action('wp_ajax_nopriv_cpp_get_video_preview', $plugin_public, 'get_video_preview');
+
+        // Session remaining polling endpoint used by the public SessionMonitor
+        $this->loader->add_action('wp_ajax_cpp_get_session_remaining', $plugin_public, 'get_session_remaining');
+        $this->loader->add_action('wp_ajax_nopriv_cpp_get_session_remaining', $plugin_public, 'get_session_remaining');
+
         // Video analytics tracking
         $this->loader->add_action('wp_ajax_cpp_track_video_event', $plugin_public, 'track_video_event');
         $this->loader->add_action('wp_ajax_nopriv_cpp_track_video_event', $plugin_public, 'track_video_event');
