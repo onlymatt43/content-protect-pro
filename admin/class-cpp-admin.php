@@ -164,6 +164,15 @@ class CPP_Admin {
 
         add_submenu_page(
             $this->plugin_name,
+            __('AI Coach', 'content-protect-pro'),
+            '<span style="color:#945BFF;">✨ AI Coach</span>',
+            'manage_options',
+            $this->plugin_name . '-ai-coach',
+            array($this, 'display_ai_coach_page')
+        );
+
+        add_submenu_page(
+            $this->plugin_name,
             __('Settings', 'content-protect-pro'),
             __('Settings', 'content-protect-pro'),
             'manage_options',
@@ -215,6 +224,16 @@ class CPP_Admin {
      */
     public function display_settings_page() {
         include_once CPP_PLUGIN_DIR . 'admin/partials/cpp-admin-settings.php';
+    }
+
+    /**
+     * AI Coach page
+     *
+     * @since 1.0.0
+     */
+    public function display_ai_coach_page() {
+        // We will create this file in the next step
+        include_once CPP_PLUGIN_DIR . 'admin/partials/cpp-admin-ai-coach.php';
     }
 
     /**

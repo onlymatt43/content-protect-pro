@@ -43,7 +43,71 @@
             window.__cpp_modal = $modal;
             window.__cpp_modal.attr('aria-hidden', 'true'); // Modal is hidden until content is ready
             this.initVideoPlayers();
+            this.classifyThumbnails();
             this.bindEvents();
+
+            // Populate overlays (title, categories, tags + play button) on thumbnails
+            this.populateThumbnailOverlays();
+
+            // Debugging helpers: mark body so we can confirm CSS file applied,
+            // and log JS init. Remove the class in production if undesired.
+            try {
+                if (typeof console !== 'undefined' && console.debug) {
+                    console.debug('[CPP] init() executed — populateThumbnailOverlays called');
+                }
+                // add a debug class so the CSS debug rules can apply (toggle from console)
+                document.body.classList.add('cpp-debug');
+            } catch (e) {}
+
+            // Remove debug marker after short delay so it doesn't mask real UI
+            try { setTimeout(function(){ document.body.classList.remove('cpp-debug'); }, 5000); } catch(e) {}
+
+            // Add "Vérifier la bibliothèque" button to filters if not present
+            try {
+                var $filters = jQuery('.cpp-library-filters').first();
+                if ($filters.length && !$filters.find('.cpp-check-items').length) {
+                    var $btn = jQuery('<button type="button" class="cpp-filter-btn cpp-check-items">Vérifier la bibliothèque</button>');
+                    $filters.append($btn);
+                    $btn.on('click', function(){ CPP_Public.checkItemLinks(); });
+                }
+            } catch (e) {}
+
+            // Auto-run check quickly after init to catch removed items
+            try { setTimeout(function(){ CPP_Public.checkItemLinks(); }, 800); } catch(e) {}
+
+            // Re-populate overlays after full load and observe mutations (already added earlier)
+            jQuery(window).on('load.cppPopulate', (function(self) {
+                return function() { try { self.populateThumbnailOverlays(); self.checkItemLinks(); } catch(e){} };
+            })(this));
+        },
+
+        // Add classes to thumbnail containers based on intrinsic image aspect ratio.
+        // Portrait (taller than wide) -> 'cpp-thumb-portrait', Landscape -> 'cpp-thumb-landscape'.
+        classifyThumbnails: function() {
+            jQuery('.cpp-video-thumbnail img').each(function() {
+                var img = this;
+                var $thumb = jQuery(img).closest('.cpp-video-thumbnail');
+
+                function applyClass() {
+                    var w = img.naturalWidth || img.width || 1;
+                    var h = img.naturalHeight || img.height || 1;
+                    var ratio = w > 0 ? (h / w) : 1;
+                    // threshold: taller than wide by ~10% considered portrait
+                    if (ratio > 1.1) {
+                        $thumb.removeClass('cpp-thumb-landscape').addClass('cpp-thumb-portrait');
+                    } else {
+                        $thumb.removeClass('cpp-thumb-portrait').addClass('cpp-thumb-landscape');
+                    }
+                }
+
+                if (img.complete && img.naturalWidth) {
+                    applyClass();
+                } else {
+                    jQuery(img).on('load', function() { applyClass(); });
+                    // fallback: if image fails to load, mark as landscape to use cover
+                    jQuery(img).on('error', function() { $thumb.addClass('cpp-thumb-landscape'); });
+                }
+            });
         },
 
         bindEvents: function() {
@@ -78,19 +142,43 @@
                 });
             });
 
-            // Filter buttons
+            // Filter buttons (by category/tag). data-filter can be:
+            //  - "all"                -> show everything
+            //  - "category:slug"      -> show items whose data-category includes slug
+            //  - "tag:slug"           -> show items whose data-tags includes slug
+            //  - "slug"               -> fallback: match category or tags (compat)
             $(document).on('click', '.cpp-filter-btn', function() {
                 jQuery('.cpp-filter-btn').removeClass('active');
                 jQuery(this).addClass('active');
                 var filter = jQuery(this).data('filter');
-                if (filter === 'all') {
+                if (!filter || filter === 'all') {
                     jQuery('.cpp-video-item').show();
-                } else {
-                    jQuery('.cpp-video-item').each(function() {
-                        var integration = jQuery(this).data('integration');
-                        if (integration === filter) jQuery(this).show(); else jQuery(this).hide();
-                    });
+                    return;
                 }
+
+                var parts = ('' + filter).split(':');
+                var type = parts.length > 1 ? parts[0] : '';
+                var value = parts.length > 1 ? parts[1] : filter;
+
+                jQuery('.cpp-video-item').each(function() {
+                    var $item = jQuery(this);
+                    var catRaw = ($item.data('category') || '').toString();
+                    var tagsRaw = ($item.data('tags') || '').toString();
+                    var categories = catRaw ? catRaw.split(/\s*,\s*/) : [];
+                    var tags = tagsRaw ? tagsRaw.split(/\s*,\s*/) : [];
+                    var match = false;
+
+                    if (type === 'category') {
+                        match = categories.indexOf(value) !== -1;
+                    } else if (type === 'tag') {
+                        match = tags.indexOf(value) !== -1;
+                    } else {
+                        // fallback: check both category and tags
+                        match = (categories.indexOf(value) !== -1) || (tags.indexOf(value) !== -1);
+                    }
+
+                    if (match) $item.show(); else $item.hide();
+                });
             });
         },
 
@@ -547,12 +635,97 @@
                 var prev = $modal.data('cpp-prev-active');
                 if (prev && typeof prev.focus === 'function') prev.focus();
             } catch (e) {}
-        }
-    };
+        },
 
-    // Session Monitor: polls server for remaining session seconds and stops video when expired
-    CPP_Public.SessionMonitor = (function() {
-        var interval = null;
+        // Populate overlay content for each thumbnail (title, categories, tags) and wire play button
+        populateThumbnailOverlays: function() {
+            try {
+                // helper to escape text for HTML
+                function escapeHTML(str) {
+                    return String(str || '').replace(/[&<>"'`=\/]/g, function(s) {
+                        return ({
+                            '&': '&amp;',
+                            '<': '&lt;',
+                            '>': '&gt;',
+                            '"': '&quot;',
+                            "'": '&#39;',
+                            '`': '&#96;',
+                            '=': '&#61;',
+                            '/': '&#47;'
+                        })[s];
+                    });
+                }
+
+                jQuery('.cpp-video-item').each(function() {
+                    var $item = jQuery(this);
+                    var $thumb = $item.find('.cpp-video-thumbnail').first();
+                    if (!$thumb.length) return;
+
+                    // Title: prefer h4 inside item or data-title
+                    var title = ($item.find('h4').first().text() || $item.data('title') || '').trim();
+
+                    // Categories & tags: accept comma-separated lists in data attributes
+                    var rawCats = ($item.data('category') || '') + '';
+                    var rawTags = ($item.data('tags') || '') + '';
+                    var cats = rawCats ? rawCats.split(/\s*,\s*/) .filter(Boolean) : [];
+                    var tags = rawTags ? rawTags.split(/\s*,\s*/) .filter(Boolean) : [];
+
+                    // Create overlay if missing
+                    if (!$thumb.find('.cpp-video-overlay').length) {
+                        var overlayHtml = ''
+                            + '<div class="cpp-video-overlay">'
+                            + '  <button class="cpp-overlay-play" type="button" aria-label="Play video"></button>'
+                            + '  <div class="cpp-overlay-content">'
+                            + '    <h4 class="cpp-overlay-title"></h4>'
+                            + '    <div class="cpp-overlay-meta"></div>'
+                            + '  </div>'
+                            + '</div>';
+                        $thumb.append(overlayHtml);
+                    }
+
+                    var $overlay = $thumb.find('.cpp-video-overlay').first();
+                    $overlay.find('.cpp-overlay-title').text(title);
+
+                    // Build meta HTML (categories first, then tags)
+                    var metaParts = [];
+                    if (cats.length) {
+                        metaParts.push('<span class="cpp-overlay-category">' + escapeHTML(cats.join(', ')) + '</span>');
+                    }
+                    if (tags.length) {
+                        metaParts.push('<span class="cpp-overlay-tags">' + escapeHTML(tags.join(', ')) + '</span>');
+                    }
+                    $overlay.find('.cpp-overlay-meta').html(metaParts.join(' <span class="cpp-overlay-sep">•</span> '));
+
+                    // Wire play button to follow the main video link (if present)
+                    $overlay.find('.cpp-overlay-play').off('click.cppOverlay').on('click.cppOverlay', function(e) {
+                        e.preventDefault();
+                        var $link = $item.find('.cpp-video-link').first();
+                        if ($link.length) {
+                            var href = $link.attr('href');
+                            if (href) {
+                                // navigate to the associated page (presto etc.)
+                                window.location.href = href;
+                            } else {
+                                // fallback: trigger link click (may open modal)
+                                $link.trigger('click');
+                            }
+                        } else {
+                            // no link found: try opening modal using data-video-id
+                            var vid = $item.data('video-id');
+                            if (vid && window.openVideoModal) {
+                                window.openVideoModal(vid);
+                            }
+                        }
+                    });
+                });
+            } catch (e) {
+                // noop on errors to avoid breaking other JS
+            }
+        },
+
+        // Force reload of plugin CSS files to bypass browser cache (appends cachebuster)
+        refreshStylesheets: function() {
+            try {
         var currentVideo = null;
         var currentVideoId = null;
 
@@ -673,7 +846,7 @@
     window.closeVideoModal = function() { return window.CPP_Public.closeVideoModal(); };
 
     // Bind gallery links to open modal (safe to double-bind; inline script may also exist)
-    jQuery(document).ready(function($) {
+    jQuery(document).ready(function() {
         $(document).on('click', '.cpp-video-link', function(e) {
             var $item = $(this).closest('.cpp-video-item');
             var vid = $item.data('video-id');

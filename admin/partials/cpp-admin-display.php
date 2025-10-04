@@ -13,6 +13,16 @@ if (!defined('WPINC')) {
     die;
 }
 
+// Ensure Video Manager is loaded
+if (!class_exists('CPP_Video_Manager') && file_exists(CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php')) {
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
+}
+
+// Ensure Analytics is loaded
+if (!class_exists('CPP_Analytics') && file_exists(CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php')) {
+    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
+}
+
 // Get system info for dashboard
 if (class_exists('CPP_Diagnostic')) {
     $diagnostic = new CPP_Diagnostic();

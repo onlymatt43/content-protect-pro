@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../ai:onlymatt:docs:terms"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}

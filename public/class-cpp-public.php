@@ -342,9 +342,17 @@ class CPP_Public {
 
             <?php if ($atts['show_filters'] === 'true'): ?>
                 <div class="cpp-library-filters">
-                    <button class="cpp-filter-btn active" data-filter="all"><?php _e('All Videos', 'content-protect-pro'); ?></button>
-                    <button class="cpp-filter-btn" data-filter="presto"><?php _e('Presto Player', 'content-protect-pro'); ?></button>
-                    <button class="cpp-filter-btn" data-filter="direct"><?php _e('Direct URL', 'content-protect-pro'); ?></button>
+                    <button class="cpp-filter-btn active" data-filter="all"><?php _e('All', 'content-protect-pro'); ?></button>
+                    <?php
+                    $cats = get_terms(['taxonomy' => 'category', 'hide_empty' => true]);
+                    $tags = get_terms(['taxonomy' => 'post_tag', 'hide_empty' => true]);
+                    $terms = array_merge(is_array($cats) ? $cats : [], is_array($tags) ? $tags : []);
+                    shuffle($terms);
+                    foreach ($terms as $term) {
+                        $filter_val = $term->taxonomy . ':' . $term->slug;
+                        echo '<button class="cpp-filter-btn" data-filter="' . esc_attr($filter_val) . '">' . esc_html($term->name) . '</button>';
+                    }
+                    ?>
                 </div>
             <?php endif; ?>
 
@@ -395,9 +403,7 @@ class CPP_Public {
                                         <?php else: ?>
                                             <span class="cpp-integration-badge cpp-direct"><?php _e('Direct URL', 'content-protect-pro'); ?></span>
                                         <?php endif; ?>
-                                        <?php if ($video->requires_giftcode): ?>
-                                            <span class="cpp-requires-code"><?php _e('Code requis', 'content-protect-pro'); ?></span>
-                                        <?php endif; ?>
+                                        <?php /* Removed visual badge for "Code requis" per user request; access control still enforced server-side */ ?>
                                     </div>
                                 </div>
                             </button>

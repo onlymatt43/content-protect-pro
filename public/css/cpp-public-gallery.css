@@ -11,6 +11,9 @@
   --cpp-border: #ececec;
   --cpp-muted: #666666;
   --cpp-accent: #d63638;
+  --cpp-play-icon-color: rgba(255,255,255,0.95);
+  --cpp-play-icon-bg: rgba(0,0,0,0.45);
+  --cpp-play-size: 36px;
   --cpp-modal-bg: rgba(0,0,0,0.6);
   --cpp-modal-content-bg: #ffffff;
   --cpp-radius: 8px;
@@ -36,38 +39,117 @@
 }
 .cpp-video-item:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
 
-.cpp-video-link { display: flex; text-decoration: none; color: inherit; align-items: stretch; }
+.cpp-video-link {
+  display: flex;
+  text-decoration: none;
+  color: inherit;
+  align-items: stretch;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
 
+/* Vignette : définir un ratio responsive et s'assurer que l'image remplit la vignette */
 .cpp-video-thumbnail {
   width: 40%;
-  min-height: 140px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  overflow:hidden;
+  /* Par défaut: ratio responsive 16:9. Navigateurs plus anciens utiliseront min-height comme fallback. */
+  aspect-ratio: 16 / 9;
+  min-height: 160px; /* fallback pour anciens navigateurs */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   flex-shrink: 0;
+  position: relative; /* pour l'overlay de lecture */
 }
-.cpp-video-thumbnail img { width:100%; height:100%; object-fit:cover; display:block; }
+.cpp-video-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;      /* couvre toute la vignette en gardant le ratio */
+  object-position: center;
+  display: block;
+  max-width: none;       /* évite que certaines règles restreignent la taille */
+  max-height: none;
+}
+
+/* Modificateurs : portrait et carré (peuvent être appliqués côté JS selon le ratio natif de l'image) */
+.cpp-video-thumbnail.cpp-thumb-portrait img { object-fit: contain; background: #000; }
+.cpp-video-thumbnail.cpp-thumb-square { aspect-ratio: 1 / 1; }
+
+/* Play icon overlay (centered) - apparaît au hover */
+.cpp-video-thumbnail::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--cpp-play-size);
+  height: var(--cpp-play-size);
+  background: var(--cpp-play-icon-bg);
+  border-radius: 50%;
+  display: block;
+  opacity: 0;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 3;
+}
+.cpp-video-thumbnail::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-44%, -50%);
+  width: 0;
+  height: 0;
+  border-top: calc(var(--cpp-play-size) * 0.25) solid transparent;
+  border-bottom: calc(var(--cpp-play-size) * 0.25) solid transparent;
+  border-left: calc(var(--cpp-play-size) * 0.35) solid var(--cpp-play-icon-color);
+  opacity: 0;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 4;
+}
+.cpp-video-item:hover .cpp-video-thumbnail::before,
+.cpp-video-item:hover .cpp-video-thumbnail::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.02);
+}
 
 .cpp-video-info {
-  padding: 12px;
+  padding: 14px 12px;
   width: 60%;
-  display:flex;
-  flex-direction:column;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
 }
-.cpp-video-info h4 { margin:0 0 8px 0; font-size:16px; }
-.cpp-video-info p { margin:0; color:var(--cpp-muted); font-size:13px; }
-.cpp-video-meta { margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.cpp-integration-badge { background:#f1f1f1; padding:4px 8px; border-radius:4px; font-size:12px; }
-.cpp-requires-code { color:var(--cpp-accent); font-weight:bold; }
 
-/* If layout collapses on small screens, stack thumbnail above info */
-@media (max-width:720px) {
-  .cpp-video-link { flex-direction: column; }
-  .cpp-video-thumbnail { width:100%; height:160px; }
-  .cpp-video-info { width:100%; }
+/* Focus styles accessibles (keyboard) */
+.cpp-video-link:focus-visible {
+  outline: 3px solid rgba(214,54,56,0.18);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
+#cpp-video-modal .cpp-modal-close:focus-visible {
+  outline: 3px solid rgba(0,0,0,0.12);
+  border-radius: 4px;
+}
+
+/* Petite transition pour l'apparition du modal (non intrusive)
+   Correction du sélecteur : #cpp-video-modal (au lieu de cpp-video_modal) */
+body #cpp-video-modal[aria-hidden="false"] .cpp-modal-content {
+  animation: cpp-modal-pop .12s ease-out;
+}
+@keyframes cpp-modal-pop {
+  from { transform: translateY(6px) scale(.995); opacity: 0.96; }
+  to   { transform: none; opacity: 1; }
+}
+
+/* Portrait vs Landscape handling (inchangé, mais conservé) */
+.cpp-video-thumbnail.cpp-thumb-portrait img { object-fit: contain; background: #000; }
+.cpp-video-thumbnail.cpp-thumb-landscape img { object-fit: cover; }
+
+/* Ensure overlay/backdrop plays nicely with contain images */
+.cpp-video-thumbnail.cpp-thumb-portrait::before { background: rgba(0,0,0,0.55); }
 
 /* -----------------------------
    Preview modal (scoped to #cpp-video-modal to avoid collisions)
@@ -157,11 +239,295 @@ html body #cpp-video-modal .cpp-modal-overlay {
   .cpp-preview-card { flex-direction:column; align-items:center; text-align:center; }
 }
 
+/* Responsive : sur petits écrans, la vignette passe en pleine largeur et conserve un ratio adapté */
+@media (max-width:720px) {
+  .cpp-video-link { flex-direction: column; }
+  .cpp-video-thumbnail { width: 100%; aspect-ratio: 16 / 9; min-height: 160px; }
+  .cpp-video-info { width: 100%; }
+}
+
 /* Small helper: visually hide but keep available to assistive tech */
 .cpp-hidden-visually {
   position: absolute !important;
   height: 1px; width: 1px; overflow: hidden;
   clip: rect(1px, 1px, 1px, 1px); white-space: nowrap;
+}
+
+/* Preview video: placed inside .cpp-video-thumbnail and covers the full area.
+   The <video> should have attributes: muted autoplay loop playsinline preload="metadata"
+   Example HTML (per vignette):
+   <div class="cpp-video-thumbnail cpp-thumb-landscape">
+     <img src="thumb.jpg" alt="...">
+     <video class="cpp-video-preview" muted autoplay loop playsinline preload="metadata" src="preview.mp4"></video>
+   </div>
+*/
+.cpp-video-thumbnail { /* ensure position/overflow already set above */ }
+
+/* video preview styling */
+.cpp-video-thumbnail video.cpp-video-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none; /* let clicks pass to the link/button */
+  z-index: 2;
+  background: #000;
+}
+
+/* fade out the image while fading in the video for smooth transition */
+.cpp-video-thumbnail img {
+  transition: opacity .18s ease;
+  backface-visibility: hidden;
+  z-index: 1;
+}
+
+/* show preview on hover for items that have previews */
+.cpp-video-item.cpp-has-preview:hover .cpp-video-preview,
+.cpp-video-item:hover .cpp-video-preview {
+  opacity: 1;
+}
+
+/* reduce/hide thumbnail image while preview is visible */
+.cpp-video-item.cpp-has-preview:hover .cpp-video-thumbnail img,
+.cpp-video-item:hover .cpp-video-thumbnail img {
+  opacity: 0;
+}
+
+/* Portrait & square modifiers for preview behavior */
+.cpp-video-thumbnail.cpp-thumb-portrait video.cpp-video-preview { object-fit: contain; background: #000; }
+.cpp-video-thumbnail.cpp-thumb-square { aspect-ratio: 1 / 1; }
+
+/* Disable autoplay previews on devices without hover (touch) to save data */
+@media (hover: none), (pointer: coarse) {
+  .cpp-video-thumbnail video.cpp-video-preview { display: none; }
+}
+
+/* Accessibility note: keep the <img> element (with appropriate alt). If you want the image ignored by AT when video is playing,
+   adjust aria-hidden on the image via JS when showing/hiding preview. */
+
+/* Overlay: titre, meta et bouton play (au-dessus de l'image/preview) */
+.cpp-video-thumbnail .cpp-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%);
+  color: #fff;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 5;               /* au-dessus de la vidéo (qui est z-index:2) */
+  pointer-events: none;     /* activé uniquement quand visible */
+}
+
+/* Overlay content layout */
+.cpp-video-overlay .cpp-overlay-content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cpp-overlay-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  line-height: 1.2;
+}
+.cpp-overlay-meta {
+  font-size: 12px;
+  color: rgba(255,255,255,0.95);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  opacity: 0.95;
+}
+
+/* Play button (trigger vers la page Presto) */
+.cpp-video-overlay .cpp-overlay-play {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: var(--cpp-accent);
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+  z-index: 6;
+  pointer-events: auto;
+}
+.cpp-video-overlay .cpp-overlay-play:focus {
+  outline: 3px solid rgba(255,255,255,0.16);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* Afficher l'overlay au hover et au focus (accessible) */
+.cpp-video-item.cpp-has-preview:hover .cpp-video-overlay,
+.cpp-video-item:hover .cpp-video-overlay,
+.cpp-video-link:focus-visible .cpp-video-overlay {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Règles plus spécifiques pour forcer l'affichage de l'overlay (utile si le thème a des sélecteurs plus forts) */
+.cpp-video-item.cpp-has-preview:hover .cpp-video-thumbnail .cpp-video-overlay,
+.cpp-video-item:hover .cpp-video-thumbnail .cpp-video-overlay,
+.cpp-video-link:focus-visible .cpp-video-thumbnail .cpp-video-overlay,
+.cpp-video-link:focus-within .cpp-video-thumbnail .cpp-video-overlay {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+  z-index: 999 !important; /* assure la superposition au-dessus de tout */
+}
+
+/* Quand l'overlay est visible, atténuer légèrement la vidéo pour une meilleure lisibilité du texte */
+.cpp-video-item.cpp-has-preview:hover .cpp-video-thumbnail .cpp-video-preview,
+.cpp-video-item:hover .cpp-video-thumbnail .cpp-video-preview,
+.cpp-video-link:focus-visible .cpp-video-thumbnail .cpp-video-preview,
+.cpp-video-link:focus-within .cpp-video-thumbnail .cpp-video-preview {
+  opacity: 0.55 !important;
+  transition: opacity .18s ease !important;
+}
+
+/* Garantir que le bouton play de l'overlay reste prioritaire pour les interactions */
+.cpp-video-thumbnail .cpp-video-overlay .cpp-overlay-play {
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+}
+
+/* Si vous ne voyez toujours pas les changements : faites un hard-refresh (Ctrl/Cmd+Shift+R)
+   ou incrémentez le suffixe de version du fichier CSS dans l'enqueue du plugin pour forcer le reload. */
+
+/* Assurer que l'overlay n'est pas masqué par l'image/vidéo */
+.cpp-video-thumbnail img { z-index: 1; }
+.cpp-video-thumbnail video.cpp-video-preview { z-index: 2; }
+
+/* Sur appareils tactiles (pas de hover) : masquer preview vidéo et rendre l'overlay visible */
+@media (hover: none), (pointer: coarse) {
+  .cpp-video-thumbnail video.cpp-video-preview { display: none; }
+  .cpp-video-thumbnail .cpp-video-overlay {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    background: linear-gradient(180deg, rgba(0,0,0,0.08) 40%, rgba(0,0,0,0.55) 100%);
+  }
+}
+
+/* Petite adaptation responsive si vignette carrée : centre le contenu */
+.cpp-video-thumbnail.cpp-thumb-square .cpp-video-overlay { align-items: center; padding: 10px; }
+
+/* Overlay meta badges (categories / tags) */
+.cpp-overlay-meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color: rgba(255,255,255,0.95); }
+.cpp-overlay-category,
+.cpp-overlay-tags {
+  background: rgba(255,255,255,0.08);
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.cpp-overlay-tags { opacity: 0.95; font-weight: 500; }
+.cpp-overlay-sep { color: rgba(255,255,255,0.6); margin: 0 6px; }
+
+/* Slightly reduce overlay content size on small thumbs */
+.cpp-video-thumbnail .cpp-overlay-title { font-size:14px; margin:0 0 6px 0; }
+.cpp-video-thumbnail .cpp-overlay-meta { font-size:12px; }
+
+/* Ensure overlay content remains legible above preview video */
+.cpp-video-thumbnail .cpp-video-overlay { text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+
+/* Debug helper: when body has .cpp-debug, force overlay visible and show a small banner.
+   Remove this block in production or when you have verified the changes. */
+body.cpp-debug .cpp-video-thumbnail .cpp-video-overlay {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+  z-index: 9999 !important;
+  transition: none !important;
+}
+body.cpp-debug .cpp-video-thumbnail {
+  outline: 2px dashed rgba(255, 200, 0, 0.9);
+}
+/* small page-level debug badge */
+body.cpp-debug::after {
+  content: "CPP debug: CSS loaded";
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 99999;
+  pointer-events: none;
+}
+
+/* Mark items that the checker found missing */
+.cpp-video-item.cpp-missing {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+
+/* Badge shown on missing thumbnails (positioned top-left) */
+.cpp-video-item.cpp-missing .cpp-video-thumbnail::before {
+  content: "Removed";
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  background: rgba(214,54,56,0.95);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 1200;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+/* Ensure the debug banner does not persist visually longer than intended.
+   The JS now removes .cpp-debug after a short timeout, but keep this mild rule. */
+body.cpp-debug .cpp-video-thumbnail .cpp-video-overlay {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+  z-index: 9999 !important;
+  transition: none !important;
+}
+body.cpp-debug .cpp-video-thumbnail {
+  outline: 2px dashed rgba(255, 200, 0, 0.9);
+}
+body.cpp-debug::after {
+  content: "CPP debug: CSS loaded";
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 99999;
+  pointer-events: none;
 }
 
 

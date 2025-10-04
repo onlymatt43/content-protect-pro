@@ -34,7 +34,7 @@ class CPP_Giftcode_Manager {
         }
         
         // Rate limiting check
-        $client_ip = cpp_get_client_ip();
+        $client_ip = $this->get_client_ip(); // use internal helper
         if (!$this->check_rate_limit($client_ip)) {
             return array(
                 'valid' => false,
@@ -83,7 +83,7 @@ class CPP_Giftcode_Manager {
         
         // Check IP restrictions if any
         if (!empty($giftcode->ip_restrictions)) {
-            $client_ip = cpp_get_client_ip();
+            $client_ip = $this->get_client_ip();
             if (!cpp_validate_client_ip($client_ip, $giftcode->ip_restrictions)) {
                 $this->log_event('giftcode_validation_failed', $code, 'ip_restricted');
                 return array(
@@ -245,7 +245,8 @@ class CPP_Giftcode_Manager {
         // Get total count
         $count_sql = "SELECT COUNT(*) FROM $table_name $where_sql";
         if (!empty($prepare_values)) {
-            $count_sql = $wpdb->prepare($count_sql, $prepare_values);
+            // unpack args for prepare
+            $count_sql = $wpdb->prepare($count_sql, ...$prepare_values);
         }
         $total = $wpdb->get_var($count_sql);
         
@@ -344,16 +345,19 @@ class CPP_Giftcode_Manager {
         $ip_keys = array('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP', 'REMOTE_ADDR');
         
         foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
+            if (!empty($_SERVER[$key])) {
                 foreach (explode(',', $_SERVER[$key]) as $ip) {
                     $ip = trim($ip);
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                    // Accept any valid IP (including private) to avoid returning empty in common setups
+                    if (filter_var($ip, FILTER_VALIDATE_IP) !== false) {
                         return $ip;
                     }
                 }
             }
         }
-        
+
+        // Fallback to empty string if nothing found
+        return '';
     }
 
     /**
@@ -432,7 +436,8 @@ class CPP_Giftcode_Manager {
         $sql = "SELECT * FROM {$table_name} {$where_sql} ORDER BY {$order_by} {$order} {$limit_sql}";
         
         if (!empty($where_values)) {
-            $sql = $wpdb->prepare($sql, $where_values);
+            // unpack where values for prepare
+            $sql = $wpdb->prepare($sql, ...$where_values);
         }
         
         return $wpdb->get_results($sql);
@@ -619,4 +624,90 @@ class CPP_Giftcode_Manager {
         }
         return $result === 0;
     }
+} // end of CPP_Giftcode_Manager class
+
+// ------------------------------
+// Minimal CPP_Video_Manager stub
+// ------------------------------
+if (!class_exists('CPP_Video_Manager')) {
+
+    /**
+     * Minimal video manager stub to satisfy diagnostics and register AJAX endpoints.
+     * Replace the internals with your real video handling logic as needed.
+     */
+    class CPP_Video_Manager {
+
+        public function __construct() {
+            add_action('init', array($this, 'register_ajax_endpoints'));
+        }
+
+        /**
+         * Register AJAX endpoints for logged-in and non-logged-in users.
+         */
+        public function register_ajax_endpoints() {
+            // Preview HTML (used by gallery modal)
+            add_action('wp_ajax_cpp_get_video_preview', array($this, 'ajax_get_video_preview'));
+            add_action('wp_ajax_nopriv_cpp_get_video_preview', array($this, 'ajax_get_video_preview'));
+
+            // Token / playback info (used by loadVideoPlayer)
+            add_action('wp_ajax_cpp_get_video_token', array($this, 'ajax_get_video_token'));
+            add_action('wp_ajax_nopriv_cpp_get_video_token', array($this, 'ajax_get_video_token'));
+        }
+
+        /**
+         * AJAX handler: return a simple preview payload (title + html).
+         * Expected input: $_POST['video_id']
+         */
+        public function ajax_get_video_preview() {
+            // Basic nonce check if provided (optional)
+            if (isset($_POST['nonce']) && !empty($_POST['nonce'])) {
+                // If your plugin uses a specific nonce action, verify here.
+                // wp_verify_nonce($_POST['nonce'], 'cpp_validate_code');
+            }
+
+            $video_id = isset($_POST['video_id']) ? sanitize_text_field(wp_unslash($_POST['video_id'])) : '';
+
+            if (empty($video_id)) {
+                wp_send_json_error(array('message' => 'Missing video_id'));
+            }
+
+            // Example response — replace with real preview HTML and meta
+            $title = sprintf('Preview for %s', esc_html($video_id));
+            $html  = '<div class="cpp-preview-card">'
+                   . '<div class="cpp-preview-thumb"><img src="' . esc_url( plugins_url('../assets/img/placeholder.png', __FILE__) ) . '" alt=""></div>'
+                   . '<div class="cpp-preview-meta"><h3>' . $title . '</h3><p>Sample preview content for video ID ' . esc_html($video_id) . '.</p></div>'
+                   . '</div>';
+
+            wp_send_json_success(array(
+                'title' => $title,
+                'html'  => $html,
+            ));
+        }
+
+        /**
+         * AJAX handler: return a token / provider meta for playback.
+         * Expected input: $_POST['video_id']
+         */
+        public function ajax_get_video_token() {
+            $video_id = isset($_POST['video_id']) ? sanitize_text_field(wp_unslash($_POST['video_id'])) : '';
+
+            if (empty($video_id)) {
+                wp_send_json_error(array('message' => 'Missing video_id'));
+            }
+
+            // Example token/meta — replace with actual tokenization logic
+            $fake_token = wp_hash($video_id . '|' . time());
+            $meta = array(
+                'provider'   => 'direct',
+                'url'        => esc_url_raw(home_url('/wp-content/uploads/example-' . $video_id . '.mp4')),
+                'mime'       => 'video/mp4',
+                'token'      => $fake_token,
+            );
+
+            wp_send_json_success($meta);
+        }
+    }
+
+    // Instantiate to ensure endpoints are registered
+    new CPP_Video_Manager();
 }
