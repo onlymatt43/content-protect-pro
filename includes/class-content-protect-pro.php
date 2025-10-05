@@ -133,7 +133,17 @@ class Content_Protect_Pro {
         $this->loader->add_action('admin_menu', $plugin_admin, 'add_plugin_admin_menu');
         $this->loader->add_action('admin_init', $plugin_admin, 'options_update');
 
-        // AI Assistant submenu
+        // AI Assistant submenu - register via hook to ensure WordPress is ready
+        $this->loader->add_action('admin_menu', $this, 'add_ai_assistant_submenu');
+    }
+
+    /**
+     * Add AI Assistant submenu page
+     * Called via admin_menu hook to ensure WordPress functions are loaded
+     *
+     * @since 3.1.0
+     */
+    public function add_ai_assistant_submenu() {
         add_submenu_page(
             $this->plugin_name,
             __('🤖 AI Assistant', 'content-protect-pro'),
