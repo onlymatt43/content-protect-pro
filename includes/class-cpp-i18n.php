@@ -1,9 +1,11 @@
 <?php
 /**
- * Internationalization functionality
+ * Internationalization Handler
+ * 
+ * Loads and defines translation domain for the plugin.
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,9 +13,9 @@ if (!defined('ABSPATH')) {
 }
 
 class CPP_i18n {
-
+    
     /**
-     * Load the plugin text domain for translation
+     * Load plugin text domain for translations
      *
      * @since 1.0.0
      */
@@ -21,7 +23,7 @@ class CPP_i18n {
         load_plugin_textdomain(
             'content-protect-pro',
             false,
-            dirname(dirname(plugin_basename(__FILE__))) . '/languages/'
+            dirname(CPP_PLUGIN_BASENAME) . '/languages/'
         );
     }
 }

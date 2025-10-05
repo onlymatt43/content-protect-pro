@@ -1,9 +1,12 @@
 <?php
 /**
- * Gift code security and validation functionality
+ * Gift Code Security
+ * 
+ * Handles timing-safe comparisons, rate limiting, and IP validation.
+ * Following copilot-instructions.md security patterns.
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,352 +14,314 @@ if (!defined('ABSPATH')) {
 }
 
 class CPP_Giftcode_Security {
-
+    
     /**
-     * Initialize security features
+     * Rate limit settings
      *
-     * @since 1.0.0
+     * @var array
+     */
+    private $rate_limits;
+    
+    /**
+     * Constructor
      */
     public function __construct() {
-        add_action('init', array($this, 'init'));
+        $security_settings = get_option('cpp_security_settings', []);
+        
+        $this->rate_limits = [
+            'enabled' => $security_settings['rate_limit_enabled'] ?? true,
+            'max_attempts' => $security_settings['rate_limit_attempts'] ?? 5,
+            'time_window' => $security_settings['rate_limit_window'] ?? 300, // 5 minutes
+        ];
     }
-
+    
     /**
-     * Initialize security hooks
+     * Timing-safe token comparison
+     * CRITICAL: Prevents timing attacks on token validation
      *
-     * @since 1.0.0
+     * @param string $expected_token Expected token
+     * @param string $provided_token User-provided token
+     * @return bool Tokens match
      */
-    public function init() {
-        // Rate limiting for gift code validation
-        add_action('wp_ajax_cpp_validate_giftcode', array($this, 'check_rate_limit'), 5);
-        add_action('wp_ajax_nopriv_cpp_validate_giftcode', array($this, 'check_rate_limit'), 5);
-        
-        // Security logging
-        add_action('cpp_giftcode_validated', array($this, 'log_validation'), 10, 2);
-        add_action('cpp_giftcode_validation_failed', array($this, 'log_failed_validation'), 10, 2);
-    }
-
-    /**
-     * Check rate limiting for gift code validation attempts
-     *
-     * @since 1.0.0
-     */
-    public function check_rate_limit() {
-        $settings = get_option('cpp_security_settings', array());
-        
-        if (empty($settings['enable_rate_limiting'])) {
-            return;
-        }
-
-        $ip = $this->get_client_ip();
-        $rate_limit = isset($settings['rate_limit_requests']) ? intval($settings['rate_limit_requests']) : 100;
-        $time_window = isset($settings['rate_limit_window']) ? intval($settings['rate_limit_window']) : 3600;
-        
-        $transient_key = 'cpp_rate_limit_' . md5($ip);
-        $attempts = get_transient($transient_key);
-        
-        if ($attempts === false) {
-            $attempts = 0;
+    public function compare_tokens($expected_token, $provided_token) {
+        if (empty($expected_token) || empty($provided_token)) {
+            return false;
         }
         
-        if ($attempts >= $rate_limit) {
-            $this->log_security_event('rate_limit_exceeded', $ip);
-            wp_send_json_error(array(
-                'message' => __('Too many attempts. Please try again later.', 'content-protect-pro')
-            ));
-        }
-        
-        // Increment attempt counter
-        set_transient($transient_key, $attempts + 1, $time_window);
-    }
-
-    /**
-     * Log successful gift code validation
-     *
-     * @param string $code Gift code
-     * @param array  $data Validation data
-     * @since 1.0.0
-     */
-    public function log_validation($code, $data) {
-        $this->log_security_event('giftcode_validated', $this->get_client_ip(), array(
-            'code' => $code,
-            'user_id' => get_current_user_id(),
-            'value' => isset($data['value']) ? $data['value'] : 0,
-        ));
-    }
-
-    /**
-     * Log failed gift code validation attempts
-     *
-     * @param string $code Gift code
-     * @param string $reason Failure reason
-     * @since 1.0.0
-     */
-    public function log_failed_validation($code, $reason) {
-        $this->log_security_event('giftcode_validation_failed', $this->get_client_ip(), array(
-            'code' => $code,
-            'reason' => $reason,
-            'user_id' => get_current_user_id(),
-        ));
-    }
-
-    /**
-     * Validate gift code format and security
-     *
-     * @param string $code Gift code to validate
-     * @return array Validation result
-     * @since 1.0.0
-     */
-    public function validate_code_security($code) {
-        // Basic format validation
-        if (empty($code)) {
-            return array(
-                'valid' => false,
-                'message' => __('Gift code cannot be empty.', 'content-protect-pro')
-            );
-        }
-
-        // Length validation
-        if (strlen($code) < 4) {
-            return array(
-                'valid' => false,
-                'message' => __('Gift code must be at least 4 characters long.', 'content-protect-pro')
-            );
-        }
-
-        // Character validation (alphanumeric only)
-        if (!preg_match('/^[A-Za-z0-9]+$/', $code)) {
-            return array(
-                'valid' => false,
-                'message' => __('Gift code can only contain letters and numbers.', 'content-protect-pro')
-            );
-        }
-
-        // Check for suspicious patterns
-        if ($this->is_suspicious_code($code)) {
-            $this->log_security_event('suspicious_giftcode_attempt', $this->get_client_ip(), array(
-                'code' => $code,
-                'user_id' => get_current_user_id(),
-            ));
-            
-            return array(
-                'valid' => false,
-                'message' => __('Invalid gift code format.', 'content-protect-pro')
-            );
-        }
-
-        return array('valid' => true);
-    }
-
-    /**
-     * Check if gift code matches suspicious patterns
-     *
-     * @param string $code Gift code
-     * @return bool True if suspicious
-     * @since 1.0.0
-     */
-    private function is_suspicious_code($code) {
-        $suspicious_patterns = array(
-            '/^(admin|test|demo|sample)$/i',
-            '/^(1234|0000|9999|abcd)$/i',
-            '/^(.)\1{3,}$/', // Repeated characters (aaaa, 1111, etc.)
-            '/(drop|select|union|insert|delete|script)/i', // SQL injection attempts
+        // Use hash_equals for timing-safe comparison
+        return hash_equals(
+            (string) $expected_token,
+            (string) $provided_token
         );
-
-        foreach ($suspicious_patterns as $pattern) {
-            if (preg_match($pattern, $code)) {
-                return true;
-            }
-        }
-
-        return false;
     }
-
+    
     /**
-     * Generate secure random gift code
+     * Check rate limiting for IP address
+     * Per copilot-instructions: ALWAYS include rate limiting checks
      *
-     * @param int    $length Code length
-     * @param string $prefix Optional prefix
-     * @param string $suffix Optional suffix
-     * @return string Generated code
-     * @since 1.0.0
+     * @param string $client_ip Client IP address
+     * @param string $action_type Action type (e.g., 'redeem_code', 'request_playback')
+     * @return bool Within rate limit
      */
-    public function generate_secure_code($length = 8, $prefix = '', $suffix = '') {
-        // Use cryptographically secure random generation
-        $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $code = '';
-        
-        // Remove potentially confusing characters
-        $characters = str_replace(array('0', 'O', '1', 'I'), '', $characters);
-        
-        for ($i = 0; $i < $length; $i++) {
-            $code .= $characters[random_int(0, strlen($characters) - 1)];
-        }
-        
-        // Ensure code doesn't match suspicious patterns
-        if ($this->is_suspicious_code($code)) {
-            return $this->generate_secure_code($length, $prefix, $suffix); // Regenerate
-        }
-        
-        return $prefix . $code . $suffix;
-    }
-
-    /**
-     * Check for brute force attacks
-     *
-     * @param string $ip IP address
-     * @return bool True if blocked
-     * @since 1.0.0
-     */
-    public function is_brute_force_attack($ip) {
-        $transient_key = 'cpp_failed_attempts_' . md5($ip);
-        $failed_attempts = get_transient($transient_key);
-        
-        if ($failed_attempts && $failed_attempts >= 10) {
+    public function check_rate_limit($client_ip, $action_type = 'redeem_code') {
+        if (!$this->rate_limits['enabled']) {
             return true;
         }
         
+        global $wpdb;
+        
+        $time_window = time() - $this->rate_limits['time_window'];
+        
+        // Count recent attempts from this IP
+        $attempt_count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_rate_limits 
+             WHERE client_ip = %s 
+             AND action_type = %s 
+             AND attempted_at > %s",
+            sanitize_text_field($client_ip),
+            sanitize_text_field($action_type),
+            gmdate('Y-m-d H:i:s', $time_window)
+        ));
+        
+        if ($attempt_count >= $this->rate_limits['max_attempts']) {
+            // Log rate limit hit
+            if (class_exists('CPP_Analytics')) {
+                $analytics = new CPP_Analytics();
+                $analytics->log_event('rate_limit_exceeded', 'security', $client_ip, [
+                    'action_type' => $action_type,
+                    'attempt_count' => $attempt_count,
+                ]);
+            }
+            
+            return false;
+        }
+        
+        // Record this attempt
+        $this->record_attempt($client_ip, $action_type);
+        
+        return true;
+    }
+    
+    /**
+     * Record rate limit attempt
+     *
+     * @param string $client_ip Client IP
+     * @param string $action_type Action type
+     */
+    private function record_attempt($client_ip, $action_type) {
+        global $wpdb;
+        
+        $wpdb->insert(
+            $wpdb->prefix . 'cpp_rate_limits',
+            [
+                'client_ip' => sanitize_text_field($client_ip),
+                'action_type' => sanitize_text_field($action_type),
+                'attempted_at' => current_time('mysql'),
+            ],
+            ['%s', '%s', '%s']
+        );
+    }
+    
+    /**
+     * Validate session IP binding
+     * Checks if session IP matches current request IP
+     *
+     * @param int $session_id Session ID
+     * @param string $current_ip Current request IP
+     * @return bool IP validation passed
+     */
+    public function validate_session_ip($session_id, $current_ip) {
+        $security_settings = get_option('cpp_security_settings', []);
+        
+        // Check if IP validation is enabled
+        if (empty($security_settings['ip_validation_enabled'])) {
+            return true;
+        }
+        
+        global $wpdb;
+        
+        $stored_ip = $wpdb->get_var($wpdb->prepare(
+            "SELECT client_ip FROM {$wpdb->prefix}cpp_sessions 
+             WHERE session_id = %d LIMIT 1",
+            absint($session_id)
+        ));
+        
+        if (empty($stored_ip)) {
+            return false;
+        }
+        
+        // Compare IPs (timing-safe)
+        return $this->compare_tokens($stored_ip, $current_ip);
+    }
+    
+    /**
+     * Generate cryptographically secure random token
+     *
+     * @param int $length Token length
+     * @return string Random token
+     */
+    public function generate_secure_token($length = 32) {
+        if (!class_exists('CPP_Encryption')) {
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-encryption.php';
+        }
+        
+        return CPP_Encryption::generate_token($length);
+    }
+    
+    /**
+     * Sanitize and validate IP address
+     *
+     * @param string $ip IP address
+     * @return string|false Validated IP or false
+     */
+    public function sanitize_ip($ip) {
+        // Remove any whitespace
+        $ip = trim($ip);
+        
+        // Validate IPv4
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return $ip;
+        }
+        
+        // Validate IPv6
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return $ip;
+        }
+        
         return false;
     }
-
+    
     /**
-     * Record failed attempt for brute force detection
+     * Get client IP address from request
+     * Handles proxies and load balancers
      *
-     * @param string $ip IP address
-     * @since 1.0.0
+     * @return string Client IP
      */
-    public function record_failed_attempt($ip) {
-        $transient_key = 'cpp_failed_attempts_' . md5($ip);
-        $failed_attempts = get_transient($transient_key);
+    public function get_client_ip() {
+        $ip = '';
         
-        if ($failed_attempts === false) {
-            $failed_attempts = 0;
-        }
+        // Check for proxy headers (in order of preference)
+        $headers = [
+            'HTTP_CF_CONNECTING_IP', // Cloudflare
+            'HTTP_X_REAL_IP',        // Nginx proxy
+            'HTTP_X_FORWARDED_FOR',  // Standard proxy header
+            'REMOTE_ADDR',           // Direct connection
+        ];
         
-        $failed_attempts++;
-        set_transient($transient_key, $failed_attempts, HOUR_IN_SECONDS);
-        
-        // Log potential attack
-        if ($failed_attempts >= 5) {
-            $this->log_security_event('potential_brute_force', $ip, array(
-                'failed_attempts' => $failed_attempts,
-            ));
-        }
-    }
-
-    /**
-     * Clear failed attempts for IP (after successful validation)
-     *
-     * @param string $ip IP address
-     * @since 1.0.0
-     */
-    public function clear_failed_attempts($ip) {
-        $transient_key = 'cpp_failed_attempts_' . md5($ip);
-        delete_transient($transient_key);
-    }
-
-    /**
-     * Get client IP address
-     *
-     * @return string IP address
-     * @since 1.0.0
-     */
-    private function get_client_ip() {
-        $ip_keys = array('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP', 'REMOTE_ADDR');
-        
-        foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
-                foreach (explode(',', $_SERVER[$key]) as $ip) {
-                    $ip = trim($ip);
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                        return $ip;
-                    }
+        foreach ($headers as $header) {
+            if (!empty($_SERVER[$header])) {
+                // X-Forwarded-For can contain multiple IPs
+                if ($header === 'HTTP_X_FORWARDED_FOR') {
+                    $ips = explode(',', $_SERVER[$header]);
+                    $ip = trim($ips[0]);
+                } else {
+                    $ip = $_SERVER[$header];
+                }
+                
+                // Validate and return first valid IP found
+                $validated_ip = $this->sanitize_ip($ip);
+                if ($validated_ip !== false) {
+                    return $validated_ip;
                 }
             }
         }
         
-        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
+        // Fallback to 0.0.0.0 if no valid IP found
+        return '0.0.0.0';
     }
-
+    
     /**
-     * Log security events
+     * Check if IP is blocked
+     * Integrates with WordPress blacklist
      *
-     * @param string $event_type Event type
-     * @param string $ip         IP address
-     * @param array  $metadata   Additional data
-     * @since 1.0.0
+     * @param string $ip IP address
+     * @return bool IP is blocked
      */
-    private function log_security_event($event_type, $ip, $metadata = array()) {
-        $settings = get_option('cpp_security_settings', array());
+    public function is_ip_blocked($ip) {
+        // Check WordPress comment blacklist
+        $blacklist = get_option('disallowed_keys');
         
-        if (empty($settings['enable_logging'])) {
-            return;
+        if (empty($blacklist)) {
+            return false;
         }
-
-        // Use analytics class for logging
-        if (class_exists('CPP_Analytics')) {
-            $analytics = new CPP_Analytics();
-            $analytics->log_event($event_type, 'security', $ip, array_merge($metadata, array(
-                'timestamp' => current_time('mysql'),
-                'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '',
-            )));
-        }
-    }
-
-    /**
-     * Get security statistics
-     *
-     * @param array $params Query parameters
-     * @return array Security statistics
-     * @since 1.0.0
-     */
-    public function get_security_stats($params = array()) {
-        $defaults = array(
-            'date_from' => date('Y-m-d', strtotime('-30 days')),
-            'date_to' => date('Y-m-d'),
-        );
         
-        $params = wp_parse_args($params, $defaults);
+        $blacklist_array = explode("\n", $blacklist);
         
-        if (class_exists('CPP_Analytics')) {
-            $analytics = new CPP_Analytics();
-            
-            // Get security-related events
-            $security_events = $analytics->get_analytics(array(
-                'object_type' => 'security',
-                'date_from' => $params['date_from'],
-                'date_to' => $params['date_to'],
-            ));
-            
-            $stats = array(
-                'total_attempts' => 0,
-                'failed_attempts' => 0,
-                'rate_limit_hits' => 0,
-                'brute_force_attempts' => 0,
-                'suspicious_codes' => 0,
-            );
-            
-            foreach ($security_events['events'] as $event) {
-                switch ($event->event_type) {
-                    case 'giftcode_validation_failed':
-                        $stats['failed_attempts']++;
-                        break;
-                    case 'rate_limit_exceeded':
-                        $stats['rate_limit_hits']++;
-                        break;
-                    case 'potential_brute_force':
-                        $stats['brute_force_attempts']++;
-                        break;
-                    case 'suspicious_giftcode_attempt':
-                        $stats['suspicious_codes']++;
-                        break;
-                }
-                $stats['total_attempts']++;
+        foreach ($blacklist_array as $blocked_item) {
+            $blocked_item = trim($blocked_item);
+            if (empty($blocked_item)) {
+                continue;
             }
             
-            return $stats;
+            if (stripos($ip, $blocked_item) !== false) {
+                return true;
+            }
         }
         
-        return array();
+        return false;
+    }
+    
+    /**
+     * Cleanup old rate limit records
+     * Called by daily cron job
+     *
+     * @param int $days Keep records newer than X days
+     * @return int Rows deleted
+     */
+    public function cleanup_rate_limits($days = 7) {
+        global $wpdb;
+        
+        $date_threshold = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+        
+        $result = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}cpp_rate_limits 
+             WHERE attempted_at < %s",
+            $date_threshold
+        ));
+        
+        return (int) $result;
+    }
+    
+    /**
+     * Validate nonce and rate limit in one call
+     * Convenience method for AJAX endpoints
+     *
+     * @param string $nonce_action Nonce action name
+     * @param string $nonce_value Nonce value
+     * @param string $rate_limit_action Rate limit action type
+     * @return array ['valid' => bool, 'message' => string]
+     */
+    public function validate_request($nonce_action, $nonce_value, $rate_limit_action = 'api_request') {
+        // Check nonce (CSRF protection)
+        if (!wp_verify_nonce($nonce_value, $nonce_action)) {
+            return [
+                'valid' => false,
+                'message' => __('Security check failed. Please refresh and try again.', 'content-protect-pro'),
+            ];
+        }
+        
+        // Get client IP
+        $client_ip = $this->get_client_ip();
+        
+        // Check if IP is blocked
+        if ($this->is_ip_blocked($client_ip)) {
+            return [
+                'valid' => false,
+                'message' => __(__('Access denied.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        // Check rate limiting
+        if (!$this->check_rate_limit($client_ip, $rate_limit_action)) {
+            return [
+                'valid' => false,
+                'message' => __('Too many attempts. Please wait a few minutes and try again.', 'content-protect-pro'),
+            ];
+        }
+        
+        return [
+            'valid' => true,
+            'message' => '',
+        ];
     }
 }

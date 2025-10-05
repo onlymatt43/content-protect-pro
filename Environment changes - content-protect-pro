@@ -1,0 +1,31 @@
+# Terminal Environment Changes
+
+## Extension: GitHub.copilot-chat
+
+Enables use of the `copilot-debug` command in the terminal.
+
+- `PATH=${env:PATH}:/Users/mathieucourchesne/Library/Application Support/Code/User/globalStorage/github.copilot-chat/debugCommand`
+
+## Extension: ms-python.debugpy
+
+Enables use of [no-config debugging](https://github.com/microsoft/vscode-python-debugger/wiki/No%E2%80%90Config-Debugging), `debugpy <script.py>`, in the terminal.
+
+- `PYDEVD_DISABLE_FILE_VALIDATION=1`
+- `VSCODE_DEBUGPY_ADAPTER_ENDPOINTS=/Users/mathieucourchesne/.vscode/extensions/ms-python.debugpy-2025.10.0-darwin-arm64/.noConfigDebugAdapterEndpoints/endpoint-1435390f0f298b95.txt`
+- `PATH=${env:PATH}:/Users/mathieucourchesne/.vscode/extensions/ms-python.debugpy-2025.10.0-darwin-arm64/bundled/scripts/noConfigScripts`
+- `BUNDLED_DEBUGPY_PATH=/Users/mathieucourchesne/.vscode/extensions/ms-python.debugpy-2025.10.0-darwin-arm64/bundled/libs/debugpy`
+
+## Extension: ms-python.python
+
+- `PYTHONSTARTUP=/Users/mathieucourchesne/Library/Application Support/Code/User/workspaceStorage/faf4a495cecfccb7c98bfa7d845a822e/ms-python.python/pythonrc.py`
+- `PYTHON_BASIC_REPL=1`
+
+## Extension: vscode.git
+
+Enables the following features: git auth provider
+
+- `GIT_ASKPASS=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass.sh`
+- `VSCODE_GIT_ASKPASS_NODE=/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)`
+- `VSCODE_GIT_ASKPASS_EXTRA_ARGS=`
+- `VSCODE_GIT_ASKPASS_MAIN=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass-main.js`
+- `VSCODE_GIT_IPC_HANDLE=/var/folders/y4/x9p17rgs3qx5tdzggz22953w0000gn/T/vscode-git-edb23fe34c.sock`

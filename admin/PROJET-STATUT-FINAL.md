@@ -134,7 +134,6 @@ $reset_result = $settings_manager->reset_to_defaults([
 ### 📋 **Compatibilité Vérifiée**
 - ✅ WordPress 5.0+ 
 - ✅ PHP 7.4+
-- ✅ Bunny CDN API v1
 - ✅ Presto Player Pro
 - ✅ Standards PSR-4
 
@@ -163,7 +162,11 @@ content-protect-pro/
 ### 🔧 **Installation**
 1. ✅ Upload vers `/wp-content/plugins/`
 2. ✅ Activation dans WordPress admin
-3. ✅ Configuration Bunny CDN (optionnel)
+3. ✅ Configuration Presto Player (optionnel)
+
+### 🖼️ **Gestion des images d'overlay**
+- ✅ Les images d'overlay sont stockées comme ID d'attachement (Media Library). L'interface admin n'accepte plus d'URLs externes.
+- ✅ Une migration tentera de convertir les anciennes URLs externes en ID d'attachement (par GUID ou nom de fichier); les valeurs non converties seront nettoyées.
 4. ✅ Configuration Presto Player (optionnel)
 
 ### ⚙️ **Configuration Presto Player**

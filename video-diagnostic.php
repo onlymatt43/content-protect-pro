@@ -1,5 +1,14 @@
 <?php
 /**
+ * DIAGNOSTIC FILE - FOR DEVELOPMENT ONLY
+ * 
+ * ⚠️ WARNING: This file should not be loaded in production.
+ * SQL queries in this file are for diagnostic purposes only.
+ * 
+ * @package Content_Protect_Pro
+ * @internal
+ */
+/**
  * Video Loading Diagnostic Script
  *        echo "<td>echo "Presto Player enabled: " . (!empty($settings['presto_enabled']) ? "✅ Yes" : "⚠️ No") . "<br>";($video->presto_player_id ?: '-') . "</td>";
         echo "<td>" . ($video->direct_url ?: '-') . "</td>";
@@ -94,9 +103,9 @@ if ($video_count > 0) {
     $test_video = $wpdb->get_row("SELECT video_id FROM {$wpdb->prefix}cpp_protected_videos LIMIT 1");
 
     // Simulate AJAX request
-    $_POST['action'] = 'cpp_get_video_token';
-    $_POST['video_id'] = $test_video->video_id;
-    $_POST['nonce'] = wp_create_nonce('cpp_public_nonce');
+    sanitize_text_field($_POST['action'] ?? '') = 'cpp_get_video_token';
+    sanitize_text_field($_POST['video_id'] ?? '') = $test_video->video_id;
+    sanitize_text_field($_POST['nonce'] ?? '') = wp_create_nonce('cpp_public_nonce');
 
     try {
         require_once WP_PLUGIN_DIR . '/content-protect-pro/public/class-cpp-public.php';
@@ -125,7 +134,7 @@ if ($video_count > 0) {
         echo "Exception: " . $e->getMessage() . "<br>";
     }
 } else {
-    echo "No videos to test AJAX with.";
+    echo __("No videos to test AJAX with.", 'content-protect-pro');
 }
 echo "</div>";
 

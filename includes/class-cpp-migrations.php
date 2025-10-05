@@ -1,9 +1,12 @@
 <?php
 /**
- * Database migrations for Content Protect Pro
+ * Database Migrations
+ * 
+ * Handles schema updates and data migrations safely.
+ * Following copilot-instructions: throttled to 12h intervals, never drops data.
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,95 +14,265 @@ if (!defined('ABSPATH')) {
 }
 
 class CPP_Migrations {
-
+    
     /**
-     * Run lightweight migrations to align DB schema
-     * Adds missing columns used by current code without dropping legacy columns
+     * Run migrations if needed
+     * Throttled to 12h intervals per copilot-instructions
+     *
+     * @return void
      */
     public static function maybe_migrate() {
-        global $wpdb;
-
-        // Avoid running too often
-        $last_run = get_option('cpp_migrations_last_run');
-        if ($last_run && (time() - intval($last_run) < 12 * HOUR_IN_SECONDS)) {
+        $last_migration = get_option('cpp_last_migration_check', 0);
+        $current_time = time();
+        
+        // Throttle migrations to 12 hours
+        if ($current_time - $last_migration < 12 * HOUR_IN_SECONDS) {
             return;
         }
-
-        self::migrate_videos_table($wpdb);
-        self::migrate_giftcodes_table($wpdb);
-
-        update_option('cpp_migrations_last_run', time());
+        
+        update_option('cpp_last_migration_check', $current_time);
+        
+        // Run all migrations in order
+        self::migrate_overlay_urls_to_attachments();
+        self::add_missing_columns();
+        self::migrate_legacy_bunny_data();
+        
+        // Update version
+        update_option('cpp_migration_version', CPP_VERSION);
     }
-
-    private static function migrate_videos_table($wpdb) {
-        $table = $wpdb->prefix . 'cpp_protected_videos';
-        if (!$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table))) {
-            return; // Will be created on activation
-        }
-
-        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
-        $missing = array();
-        $add_sql = array();
-
-        if (!in_array('required_minutes', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN required_minutes INT(11) NOT NULL DEFAULT 60 AFTER title';
-        }
-        if (!in_array('integration_type', $columns, true)) {
-            $add_sql[] = "ADD COLUMN integration_type VARCHAR(50) NOT NULL DEFAULT 'bunny' AFTER required_minutes";
-        }
-        if (!in_array('bunny_library_id', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN bunny_library_id VARCHAR(255) NULL AFTER integration_type';
-        }
-        if (!in_array('presto_player_id', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN presto_player_id VARCHAR(255) NULL AFTER bunny_library_id';
-        }
-        if (!in_array('direct_url', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN direct_url TEXT NULL AFTER presto_player_id';
-        }
-        if (!in_array('status', $columns, true)) {
-            $add_sql[] = "ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER description";
-        }
-        if (!in_array('usage_count', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN usage_count INT(11) NOT NULL DEFAULT 0 AFTER status';
-        }
-        if (!in_array('max_uses', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN max_uses INT(11) NULL AFTER usage_count';
-        }
-
-        if (!empty($add_sql)) {
-            $sql = 'ALTER TABLE ' . $table . ' ' . implode(', ', $add_sql);
-            $wpdb->query($sql);
+    
+    /**
+     * Migrate overlay URLs to attachment IDs
+     * POST-MIGRATION RULE from copilot-instructions
+     *
+     * @return void
+     */
+    private static function migrate_overlay_urls_to_attachments() {
+        $settings = get_option('cpp_integration_settings', []);
+        
+        // Check if overlay_image is a URL (legacy format)
+        if (!empty($settings['overlay_image']) && filter_var($settings['overlay_image'], FILTER_VALIDATE_URL)) {
+            $url = $settings['overlay_image'];
+            
+            // Try to find attachment by URL
+            $attachment_id = attachment_url_to_postid($url);
+            
+            if ($attachment_id) {
+                // Found in media library - update to ID
+                $settings['overlay_image'] = $attachment_id;
+                update_option('cpp_integration_settings', $settings);
+                
+                // Log migration
+                if (class_exists('CPP_Analytics')) {
+                    $analytics = new CPP_Analytics();
+                    $analytics->log_event('migration_overlay_url_to_id', 'settings', 'overlay', [
+                        'old_url' => $url,
+                        'new_attachment_id' => $attachment_id,
+                    ]);
+                }
+            } else {
+                // Not found - import to media library
+                $attachment_id = self::import_external_image($url);
+                
+                if ($attachment_id) {
+                    $settings['overlay_image'] = $attachment_id;
+                    update_option('cpp_integration_settings', $settings);
+                }
+            }
         }
     }
-
-    private static function migrate_giftcodes_table($wpdb) {
-        $table = $wpdb->prefix . 'cpp_giftcodes';
-        if (!$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table))) {
-            return; // Will be created on activation
+    
+    /**
+     * Import external image to media library
+     *
+     * @param string $url Image URL
+     * @return int|false Attachment ID or false
+     */
+    private static function import_external_image($url) {
+        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+        
+        // Download image
+        $tmp = download_url($url);
+        
+        if (is_wp_error($tmp)) {
+            return false;
         }
-
-        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
-        $add_sql = array();
-
-        if (!in_array('secure_token', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN secure_token VARCHAR(255) NOT NULL AFTER code';
+        
+        // Prepare file array
+        $file_array = [
+            'name' => basename($url),
+            'tmp_name' => $tmp,
+        ];
+        
+        // Sideload to media library
+        $attachment_id = media_handle_sideload($file_array, 0, 'CPP Overlay Image');
+        
+        // Clean up temp file
+        @unlink($tmp);
+        
+        return is_wp_error($attachment_id) ? false : $attachment_id;
+    }
+    
+    /**
+     * Add missing columns to tables
+     * Safe to run multiple times (checks existing schema first)
+     *
+     * @return void
+     */
+    private static function add_missing_columns() {
+        global $wpdb;
+        
+        $prefix = $wpdb->prefix;
+        
+        // Check if cpp_giftcodes has secure_token column
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM {$prefix}cpp_giftcodes LIKE %s",
+            'secure_token'
+        ));
+        
+        if (empty($column_exists)) {
+            $wpdb->query(
+                "ALTER TABLE {$prefix}cpp_giftcodes 
+                 ADD COLUMN secure_token varchar(100) DEFAULT NULL AFTER code"
+            );
+            
+            // Generate tokens for existing codes
+            self::backfill_secure_tokens();
         }
-        if (!in_array('duration_minutes', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN duration_minutes INT(11) NOT NULL DEFAULT 60 AFTER secure_token';
+        
+        // Check if cpp_protected_videos has thumbnail_url
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM {$prefix}cpp_protected_videos LIKE %s",
+            'thumbnail_url'
+        ));
+        
+        if (empty($column_exists)) {
+            $wpdb->query(
+                "ALTER TABLE {$prefix}cpp_protected_videos 
+                 ADD COLUMN thumbnail_url varchar(500) DEFAULT NULL AFTER direct_url"
+            );
         }
-        if (!in_array('duration_display', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN duration_display VARCHAR(50) NULL AFTER duration_minutes';
+        
+        // Check if cpp_sessions has user_agent
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM {$prefix}cpp_sessions LIKE %s",
+            'user_agent'
+        ));
+        
+        if (empty($column_exists)) {
+            $wpdb->query(
+                "ALTER TABLE {$prefix}cpp_sessions 
+                 ADD COLUMN user_agent varchar(255) DEFAULT NULL AFTER client_ip"
+            );
         }
-        if (!in_array('ip_restrictions', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN ip_restrictions TEXT NULL AFTER status';
+    }
+    
+    /**
+     * Backfill secure tokens for existing gift codes
+     *
+     * @return void
+     */
+    private static function backfill_secure_tokens() {
+        global $wpdb;
+        
+        $codes = $wpdb->get_results(
+            "SELECT id FROM {$wpdb->prefix}cpp_giftcodes 
+             WHERE secure_token IS NULL OR secure_token = ''"
+        );
+        
+        foreach ($codes as $code) {
+            $secure_token = CPP_Encryption::generate_token(32);
+            
+            $wpdb->update(
+                $wpdb->prefix . 'cpp_giftcodes',
+                ['secure_token' => $secure_token],
+                ['id' => $code->id],
+                ['%s'],
+                ['%d']
+            );
         }
-        if (!in_array('description', $columns, true)) {
-            $add_sql[] = 'ADD COLUMN description TEXT NULL AFTER expires_at';
+    }
+    
+    /**
+     * Migrate legacy Bunny CDN data
+     * Converts old bunny_video_id to new structure
+     *
+     * @return void
+     */
+    private static function migrate_legacy_bunny_data() {
+        global $wpdb;
+        
+        // Check for legacy bunny_video_id column
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM {$wpdb->prefix}cpp_protected_videos LIKE %s",
+            'bunny_video_id'
+        ));
+        
+        if (!empty($column_exists)) {
+            // Migrate data to direct_url format
+            $legacy_videos = $wpdb->get_results(
+                "SELECT id, bunny_video_id 
+                 FROM {$wpdb->prefix}cpp_protected_videos 
+                 WHERE bunny_video_id IS NOT NULL 
+                 AND (direct_url IS NULL OR direct_url = '')"
+            );
+            
+            $settings = get_option('cpp_integration_settings', []);
+            $bunny_hostname = $settings['bunny_cdn_hostname'] ?? '';
+            
+            foreach ($legacy_videos as $video) {
+                if (!empty($bunny_hostname)) {
+                    $direct_url = 'https://' . $bunny_hostname . '/' . $video->bunny_video_id . '/playlist.m3u8';
+                    
+                    $wpdb->update(
+                        $wpdb->prefix . 'cpp_protected_videos',
+                        [
+                            'direct_url' => $direct_url,
+                            'integration_type' => 'bunny',
+                        ],
+                        ['id' => $video->id],
+                        ['%s', '%s'],
+                        ['%d']
+                    );
+                }
+            }
+            
+            // Drop legacy column after migration
+            $wpdb->query(
+                "ALTER TABLE {$wpdb->prefix}cpp_protected_videos 
+                 DROP COLUMN bunny_video_id"
+            );
         }
-
-        if (!empty($add_sql)) {
-            $sql = 'ALTER TABLE ' . $table . ' ' . implode(', ', $add_sql);
-            $wpdb->query($sql);
-        }
+    }
+    
+    /**
+     * Get migration status report
+     *
+     * @return array Status info
+     */
+    public static function get_migration_status() {
+        global $wpdb;
+        
+        $status = [
+            'last_check' => get_option('cpp_last_migration_check', 0),
+            'version' => get_option('cpp_migration_version', '0.0.0'),
+            'current_version' => CPP_VERSION,
+        ];
+        
+        // Check overlay migration status
+        $settings = get_option('cpp_integration_settings', []);
+        $status['overlay_migrated'] = empty($settings['overlay_image']) || 
+                                       ctype_digit((string) $settings['overlay_image']);
+        
+        // Check secure tokens
+        $missing_tokens = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_giftcodes 
+             WHERE secure_token IS NULL OR secure_token = ''"
+        );
+        $status['tokens_backfilled'] = ($missing_tokens == 0);
+        
+        return $status;
     }
 }

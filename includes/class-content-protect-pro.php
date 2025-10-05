@@ -79,13 +79,14 @@ class Content_Protect_Pro {
         // Integrations (only Presto Player)
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-presto-integration.php';
         
+        // Bunny CDN integration (LEGACY per copilot-instructions)
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-cpp-bunny-integration.php';
+        
         // Analytics and diagnostics
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-diagnostic.php';
         
         // Basic features
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-encryption.php';
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics-export.php';
         require_once CPP_PLUGIN_DIR . 'includes/class-cpp-migrations.php';
         
         // Helper functions
@@ -95,6 +96,16 @@ class Content_Protect_Pro {
         if (file_exists(CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php')) {
             require_once CPP_PLUGIN_DIR . 'includes/cpp-ajax-handlers.php';
         }
+
+        /**
+         * AI Settings Handler
+         */
+        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-cpp-settings-ai.php';
+    
+        /**
+         * AI Admin Assistant
+         */
+        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-cpp-ai-admin-assistant.php';
 
         $this->loader = new CPP_Loader();
     }
@@ -121,6 +132,16 @@ class Content_Protect_Pro {
         $this->loader->add_action('admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts');
         $this->loader->add_action('admin_menu', $plugin_admin, 'add_plugin_admin_menu');
         $this->loader->add_action('admin_init', $plugin_admin, 'options_update');
+
+        // AI Assistant submenu
+        add_submenu_page(
+            $this->plugin_name,
+            __('🤖 AI Assistant', 'content-protect-pro'),
+            __('🤖 AI Assistant', 'content-protect-pro'),
+            'manage_options',
+            $this->plugin_name . '-ai-assistant',
+            [$this, 'display_ai_assistant_page']
+        );
     }
 
     /**
@@ -144,9 +165,23 @@ class Content_Protect_Pro {
         $this->loader->add_action('wp_ajax_cpp_get_video_token', $plugin_public, 'get_video_token');
         $this->loader->add_action('wp_ajax_nopriv_cpp_get_video_token', $plugin_public, 'get_video_token');
 
+    // AJAX handler to retrieve a small preview HTML for the video (used by the public gallery modal)
+    $this->loader->add_action('wp_ajax_cpp_get_video_preview', $plugin_public, 'get_video_preview');
+    $this->loader->add_action('wp_ajax_nopriv_cpp_get_video_preview', $plugin_public, 'get_video_preview');
+
         // Video analytics tracking
         $this->loader->add_action('wp_ajax_cpp_track_video_event', $plugin_public, 'track_video_event');
         $this->loader->add_action('wp_ajax_nopriv_cpp_track_video_event', $plugin_public, 'track_video_event');
+    }
+
+    /**
+     * Register all of the hooks related to AI functionality
+     *
+     * @since 1.0.0
+     */
+    private function define_ai_hooks() {
+        // Load AI REST API routes
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/cpp-ai-rest-api.php';
     }
 
     /**
@@ -160,6 +195,7 @@ class Content_Protect_Pro {
             CPP_Migrations::maybe_migrate();
         }
         $this->loader->run();
+        $this->define_ai_hooks();
     }
 
     /**

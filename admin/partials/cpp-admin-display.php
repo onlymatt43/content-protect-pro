@@ -1,5 +1,15 @@
 <?php
 /**
+ * Security check - verify user has required capability
+ */
+if (!current_user_can('manage_options')) {
+    wp_die(
+        __('You do not have sufficient permissions to access this page.', 'content-protect-pro'),
+        __('Unauthorized', 'content-protect-pro'),
+        array('response' => 403)
+    );
+}
+/**
  * Provide a admin area view for the plugin
  *
  * This file is used to markup the admin-facing aspects of the plugin.
@@ -152,7 +162,7 @@ if (class_exists('CPP_Analytics')) {
             <div class="cpp-actions-grid">
                 <div class="cpp-action-card">
                     <h3><?php _e('Create Gift Code', 'content-protect-pro'); ?></h3>
-                    <p><?php _e('Generate a new gift code for content access.', 'content-protect-pro'); ?></p>
+                    <p><?php _e(__('Generate a new gift code for content access.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     <a href="<?php echo admin_url('admin.php?page=content-protect-pro-giftcodes&action=add'); ?>" class="button button-primary">
                         <?php _e('Create Code', 'content-protect-pro'); ?>
                     </a>
@@ -160,7 +170,7 @@ if (class_exists('CPP_Analytics')) {
 
                 <div class="cpp-action-card">
                     <h3><?php _e('Protect Video', 'content-protect-pro'); ?></h3>
-                    <p><?php _e('Add a new video to the protection system.', 'content-protect-pro'); ?></p>
+                    <p><?php _e(__('Add a new video to the protection system.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     <a href="<?php echo admin_url('admin.php?page=content-protect-pro-videos&action=add'); ?>" class="button button-primary">
                         <?php _e('Protect Video', 'content-protect-pro'); ?>
                     </a>
@@ -168,7 +178,7 @@ if (class_exists('CPP_Analytics')) {
 
                 <div class="cpp-action-card">
                     <h3><?php _e('Integration Setup', 'content-protect-pro'); ?></h3>
-                    <p><?php _e('Configure Bunny CDN or Presto Player integration.', 'content-protect-pro'); ?></p>
+                    <p><?php _e(__('Configure Bunny CDN or Presto Player integration.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     <a href="<?php echo admin_url('admin.php?page=content-protect-pro-settings&tab=integrations'); ?>" class="button button-secondary">
                         <?php _e('Setup Integrations', 'content-protect-pro'); ?>
                     </a>
@@ -303,7 +313,7 @@ if (class_exists('CPP_Analytics')) {
                 else:
                 ?>
                     <div class="cpp-no-activity">
-                        <p><?php _e('No recent activity found.', 'content-protect-pro'); ?></p>
+                        <p><?php _e(__('No recent activity found.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     </div>
                 <?php endif; ?>
             </div>

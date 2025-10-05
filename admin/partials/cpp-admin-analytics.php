@@ -1,5 +1,15 @@
 <?php
 /**
+ * Security check - verify user has required capability
+ */
+if (!current_user_can('manage_options')) {
+    wp_die(
+        __('You do not have sufficient permissions to access this page.', 'content-protect-pro'),
+        __('Unauthorized', 'content-protect-pro'),
+        array('response' => 403)
+    );
+}
+/**
  * Provide a admin area view for analytics
  *
  * @package Content_Protect_Pro
@@ -14,8 +24,8 @@ if (!defined('WPINC')) {
 $analytics = class_exists('CPP_Analytics') ? new CPP_Analytics() : null;
 
 // Get date range from request
-$date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : date('Y-m-d', strtotime('-30 days'));
-$date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : date('Y-m-d');
+$date_from = isset(sanitize_text_field($_GET['date_from'] ?? '')) ? sanitize_text_field(sanitize_text_field($_GET['date_from'] ?? '')) : date('Y-m-d', strtotime('-30 days'));
+$date_to = isset(sanitize_text_field($_GET['date_to'] ?? '')) ? sanitize_text_field(sanitize_text_field($_GET['date_to'] ?? '')) : date('Y-m-d');
 
 // Get analytics data
 $analytics_data = array();
@@ -278,7 +288,7 @@ if ($analytics) {
         <!-- Export Options -->
         <div class="cpp-analytics-export">
             <h2><?php _e('Export Analytics', 'content-protect-pro'); ?></h2>
-            <p><?php _e('Export your analytics data for external analysis or reporting.', 'content-protect-pro'); ?></p>
+            <p><?php _e(__('Export your analytics data for external analysis or reporting.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
             
             <div class="cpp-export-buttons">
                 <button type="button" class="button button-secondary" onclick="exportCSV()">

@@ -1,9 +1,14 @@
 <?php
 /**
- * AJAX handlers for bulk code generation
+ * AJAX Request Handlers
+ * 
+ * All AJAX endpoints following copilot-instructions security patterns:
+ * - wp_verify_nonce() on every request
+ * - Rate limiting per IP
+ * - Proper sanitization/escaping
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,225 +16,318 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Handle bulk gift code creation via AJAX
+ * Register AJAX handlers
  */
-function cpp_ajax_bulk_create_codes() {
-    // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cpp_bulk_codes')) {
-        wp_die('Security check failed');
+add_action('wp_ajax_cpp_validate_giftcode', 'cpp_ajax_validate_giftcode');
+add_action('wp_ajax_nopriv_cpp_validate_giftcode', 'cpp_ajax_validate_giftcode');
+
+add_action('wp_ajax_cpp_get_video_token', 'cpp_ajax_get_video_token');
+add_action('wp_ajax_nopriv_cpp_get_video_token', 'cpp_ajax_get_video_token');
+
+add_action('wp_ajax_cpp_get_video_preview', 'cpp_ajax_get_video_preview');
+add_action('wp_ajax_nopriv_cpp_get_video_preview', 'cpp_ajax_get_video_preview');
+
+add_action('wp_ajax_cpp_track_video_event', 'cpp_ajax_track_video_event');
+add_action('wp_ajax_nopriv_cpp_track_video_event', 'cpp_ajax_track_video_event');
+
+add_action('wp_ajax_cpp_invalidate_session', 'cpp_ajax_invalidate_session');
+add_action('wp_ajax_nopriv_cpp_invalidate_session', 'cpp_ajax_invalidate_session');
+
+/**
+ * Validate gift code
+ * Following copilot-instructions: CSRF protection + rate limiting
+ */
+function cpp_ajax_validate_giftcode() {
+    // Security validation (all-in-one)
+    if (!class_exists('CPP_Giftcode_Security')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-security.php';
     }
     
-    // Check user capabilities
-    if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
+    $security = new CPP_Giftcode_Security();
+    $validation = $security->validate_request(
+        'cpp_public_nonce',
+        $_POST['nonce'] ?? '',
+        'redeem_code'
+    );
+    
+    if (!$validation['valid']) {
+        wp_send_json_error(['message' => $validation['message']], 403);
     }
     
-    // Get codes data
-    $codes_json = sanitize_textarea_field($_POST['codes']);
-    $codes_data = json_decode($codes_json, true);
+    $code = sanitize_text_field($_POST['code'] ?? '');
     
-    if (!is_array($codes_data)) {
-        wp_send_json_error('Invalid codes data');
-        return;
+    if (empty($code)) {
+        wp_send_json_error(['message' => __(__('Gift code is required.', 'content-protect-pro'), 'content-protect-pro')], 400);
     }
     
-    // Load required classes
-    require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
-    require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
-    
-    $giftcode_manager = new CPP_Giftcode_Manager();
-    $created_count = 0;
-    $errors = array();
-    
-    // Process each code
-    foreach ($codes_data as $code_data) {
-        // Validate required fields
-        if (empty($code_data['code']) || empty($code_data['secure_token'])) {
-            $errors[] = 'Missing required fields for code: ' . ($code_data['code'] ?? 'unknown');
-            continue;
-        }
-        
-        // Convert duration to minutes
-        $duration_minutes = cpp_convert_to_minutes(
-            intval($code_data['duration_value']),
-            sanitize_text_field($code_data['duration_unit'])
-        );
-        
-        // Prepare code data for database
-        $db_code_data = array(
-            'code' => sanitize_text_field($code_data['code']),
-            'secure_token' => sanitize_text_field($code_data['secure_token']),
-            'duration_minutes' => $duration_minutes,
-            'duration_display' => $code_data['duration_value'] . ' ' . $code_data['duration_unit'],
-            'status' => 'active',
-            'description' => sanitize_textarea_field($code_data['description']),
-            'expires_at' => null, // No expiration by default
-            'ip_restrictions' => '' // No IP restrictions by default
-        );
-        
-        // Create the code
-        $result = $giftcode_manager->create_code($db_code_data);
-        
-        if ($result) {
-            $created_count++;
-        } else {
-            $errors[] = 'Failed to create code: ' . $code_data['code'];
-        }
+    // Validate code
+    if (!class_exists('CPP_Giftcode_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-giftcode-manager.php';
     }
     
-    // Send response
-    if ($created_count > 0) {
-        $message = sprintf('Successfully created %d codes', $created_count);
-        if (!empty($errors)) {
-            $message .= '. Errors: ' . implode(', ', $errors);
-        }
-        
-        wp_send_json_success(array(
-            'created' => $created_count,
-            'errors' => $errors,
-            'message' => $message
-        ));
-    } else {
-        wp_send_json_error('No codes were created. Errors: ' . implode(', ', $errors));
+    $manager = new CPP_Giftcode_Manager();
+    $result = $manager->validate_code($code);
+    
+    if (!$result['valid']) {
+        wp_send_json_error(['message' => $result['message']], 403);
     }
+    
+    // Create session
+    if (!class_exists('CPP_Protection_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-protection-manager.php';
+    }
+    
+    $protection = new CPP_Protection_Manager();
+    $session = $protection->create_session($code, $result['duration_minutes']);
+    
+    if (!$session['success']) {
+        wp_send_json_error(['message' => $session['message']], 500);
+    }
+    
+    wp_send_json_success([
+        'message' => __('Gift code validated successfully!', 'content-protect-pro'),
+        'duration_minutes' => $result['duration_minutes'],
+        'expires_at' => $session['expires_at'],
+    ]);
 }
 
 /**
- * Handle video creation via AJAX
+ * Get video playback token
+ * Returns Presto Player embed or Bunny signed URL
  */
-function cpp_ajax_create_video() {
-    // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cpp_create_video')) {
-        wp_die('Security check failed');
+function cpp_ajax_get_video_token() {
+    // CSRF protection
+    if (!check_ajax_referer('cpp_public_nonce', 'nonce', false)) {
+        wp_send_json_error(['message' => __(__('Security check failed.', 'content-protect-pro'), 'content-protect-pro')], 403);
     }
     
-    // Check user capabilities
-    if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
+    $video_id = sanitize_text_field($_POST['video_id'] ?? '');
+    $session_token = $_COOKIE['cpp_session_token'] ?? '';
+    
+    if (empty($video_id)) {
+        wp_send_json_error(['message' => __(__('Video ID is required.', 'content-protect-pro'), 'content-protect-pro')], 400);
+    }
+    
+    // Validate session
+    if (!class_exists('CPP_Protection_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-protection-manager.php';
+    }
+    
+    $protection = new CPP_Protection_Manager();
+    
+    if (!$protection->check_video_access($video_id, $session_token)) {
+        wp_send_json_error(['message' => __('Access denied. Invalid or expired session.', 'content-protect-pro')], 403);
     }
     
     // Get video data
-    $video_json = sanitize_textarea_field($_POST['video_data']);
-    $video_data = json_decode($video_json, true);
-    
-    if (!is_array($video_data)) {
-        wp_send_json_error('Invalid video data');
-        return;
+    if (!class_exists('CPP_Video_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
     }
     
-    // Validate required fields
-    if (empty($video_data['video_id']) || empty($video_data['title']) || empty($video_data['required_minutes'])) {
-        wp_send_json_error('Missing required fields');
-        return;
+    $video_manager = new CPP_Video_Manager();
+    $video = $video_manager->get_protected_video($video_id);
+    
+    if (!$video) {
+        wp_send_json_error(['message' => __(__('Video not found.', 'content-protect-pro'), 'content-protect-pro')], 404);
     }
     
-    // Prepare database data
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'cpp_protected_videos';
+    $response = [];
     
-    $db_data = array(
-        'video_id' => sanitize_text_field($video_data['video_id']),
-        'title' => sanitize_text_field($video_data['title']),
-        'required_minutes' => intval($video_data['required_minutes']),
-        'integration_type' => sanitize_text_field($video_data['integration_type']),
-        'bunny_library_id' => sanitize_text_field($video_data['bunny_library_id']),
-        'presto_player_id' => isset($video_data['presto_player_id']) ? sanitize_text_field($video_data['presto_player_id']) : '',
-        'direct_url' => esc_url_raw($video_data['direct_url']),
-        'description' => sanitize_textarea_field($video_data['description']),
-        'status' => sanitize_text_field($video_data['status']),
-        'created_at' => current_time('mysql')
-    );
-    
-    // Insert into database
-    $result = $wpdb->insert($table_name, $db_data);
-    
-    if ($result) {
-        wp_send_json_success(array(
-            'message' => 'Video created successfully',
-            'video_id' => $wpdb->insert_id
-        ));
-    } else {
-        wp_send_json_error('Failed to create video in database');
+    // Generate access based on integration type
+    if ($video->integration_type === 'presto' && !empty($video->presto_player_id)) {
+        // Presto Player (primary per copilot-instructions)
+        if (!class_exists('CPP_Presto_Integration')) {
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-presto-integration.php';
+        }
+        
+        $presto = new CPP_Presto_Integration();
+        $embed_html = $presto->generate_access_token($video->presto_player_id);
+        
+        if ($embed_html) {
+            $response = [
+                'type' => 'embed',
+                'provider' => 'presto',
+                'embed_html' => $embed_html,
+            ];
+        }
+    } elseif ($video->integration_type === 'bunny' && !empty($video->direct_url)) {
+        // Bunny CDN (legacy per copilot-instructions)
+        if (!class_exists('CPP_Bunny_Integration')) {
+            require_once CPP_PLUGIN_DIR . 'includes/class-cpp-bunny-integration.php';
+        }
+        
+        $bunny = new CPP_Bunny_Integration();
+        $signed_url = $bunny->generate_signed_url($video->direct_url, 3600);
+        
+        if ($signed_url) {
+            $response = [
+                'type' => 'url',
+                'provider' => 'bunny',
+                'playback_url' => $signed_url,
+                'expires_in' => 3600,
+            ];
+        }
+    } elseif (!empty($video->direct_url)) {
+        // Direct URL fallback
+        $response = [
+            'type' => 'url',
+            'provider' => 'direct',
+            'playback_url' => esc_url($video->direct_url),
+        ];
     }
+    
+    if (empty($response)) {
+        wp_send_json_error(['message' => __(__('Unable to generate video access.', 'content-protect-pro'), 'content-protect-pro')], 500);
+    }
+    
+    // Log playback request
+    if (class_exists('CPP_Analytics')) {
+        $analytics = new CPP_Analytics();
+        $analytics->log_event('video_playback_requested', 'video', $video_id, [
+            'integration_type' => $video->integration_type,
+        ]);
+    }
+    
+    wp_send_json_success($response);
 }
 
 /**
- * Handle video deletion via AJAX
+ * Get video preview (for modal display)
  */
-function cpp_ajax_delete_video() {
-    // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cpp_delete_video')) {
-        wp_die('Security check failed');
+function cpp_ajax_get_video_preview() {
+    // CSRF protection
+    if (!check_ajax_referer('cpp_public_nonce', 'nonce', false)) {
+        wp_send_json_error(['message' => __(__('Security check failed.', 'content-protect-pro'), 'content-protect-pro')], 403);
     }
     
-    // Check user capabilities
-    if (!current_user_can('manage_options')) {
-        wp_die('Insufficient permissions');
+    $video_id = sanitize_text_field($_POST['video_id'] ?? '');
+    
+    if (empty($video_id)) {
+        wp_send_json_error(['message' => __(__('Video ID is required.', 'content-protect-pro'), 'content-protect-pro')], 400);
     }
     
-    $video_id = intval($_POST['video_id']);
-    
-    if (!$video_id) {
-        wp_send_json_error('Invalid video ID');
-        return;
+    // Get video data
+    if (!class_exists('CPP_Video_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-video-manager.php';
     }
     
-    // Delete from database
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'cpp_protected_videos';
+    $video_manager = new CPP_Video_Manager();
+    $video = $video_manager->get_protected_video($video_id);
     
-    $result = $wpdb->delete(
-        $table_name,
-        array('id' => $video_id),
-        array('%d')
-    );
-    
-    if ($result) {
-        wp_send_json_success('Video deleted successfully');
-    } else {
-        wp_send_json_error('Failed to delete video');
+    if (!$video) {
+        wp_send_json_error(['message' => __(__('Video not found.', 'content-protect-pro'), 'content-protect-pro')], 404);
     }
+    
+    // Generate preview HTML
+    $preview_html = '';
+    
+    if ($video->integration_type === 'presto' && !empty($video->presto_player_id)) {
+        // Try Presto Player embed
+        $embed = do_shortcode('[presto_player id="' . absint($video->presto_player_id) . '"]');
+        if (!empty($embed)) {
+            $preview_html = $embed;
+        }
+    }
+    
+    // Fallback to thumbnail card
+    if (empty($preview_html)) {
+        $thumb = '';
+        
+        if (!empty($video->thumbnail_url)) {
+            $thumb = esc_url($video->thumbnail_url);
+        } elseif (!empty($video->presto_player_id)) {
+            $thumb = get_the_post_thumbnail_url(absint($video->presto_player_id), 'medium');
+        }
+        
+        ob_start();
+        ?>
+        <div class="cpp-preview-card">
+            <?php if ($thumb): ?>
+                <div class="cpp-preview-thumb">
+                    <img src="<?php echo esc_url($thumb); ?>" alt="<?php echo esc_attr($video->title); ?>" />
+                </div>
+            <?php endif; ?>
+            <div class="cpp-preview-meta">
+                <h4><?php echo esc_html($video->title); ?></h4>
+                <?php if (!empty($video->description)): ?>
+                    <p><?php echo esc_html(wp_trim_words($video->description, 25)); ?></p>
+                <?php endif; ?>
+                <p class="cpp-preview-info">
+                    <?php
+                    printf(
+                        esc_html__('Requires %d minutes of access', 'content-protect-pro'),
+                        absint($video->required_minutes)
+                    );
+                    ?>
+                </p>
+            </div>
+        </div>
+        <?php
+        $preview_html = ob_get_clean();
+    }
+    
+    wp_send_json_success([
+        'html' => $preview_html,
+        'title' => $video->title,
+    ]);
 }
 
 /**
- * Handle updating required minutes for Presto Player videos
+ * Track video event (analytics)
  */
-function cpp_ajax_update_video_minutes() {
-    // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'cpp_update_video_minutes')) {
-        wp_send_json_error('Security check failed');
+function cpp_ajax_track_video_event() {
+    // CSRF protection
+    if (!check_ajax_referer('cpp_public_nonce', 'nonce', false)) {
+        wp_send_json_error(['message' => __(__('Security check failed.', 'content-protect-pro'), 'content-protect-pro')], 403);
     }
     
-    // Check user capabilities
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Insufficient permissions');
+    $event_type = sanitize_text_field($_POST['event_type'] ?? '');
+    $video_id = sanitize_text_field($_POST['video_id'] ?? '');
+    
+    if (empty($event_type) || empty($video_id)) {
+        wp_send_json_error(['message' => __(__('Missing parameters.', 'content-protect-pro'), 'content-protect-pro')], 400);
     }
     
-    $video_id = intval($_POST['video_id']);
-    $minutes = intval($_POST['minutes']);
-    
-    if (!$video_id || $minutes < 0) {
-        wp_send_json_error('Invalid video ID or minutes value');
+    // Log event
+    if (!class_exists('CPP_Analytics')) {
+        wp_send_json_success(['message' => 'Analytics disabled']);
     }
     
-    // Verify this is a Presto Player video
-    $post = get_post($video_id);
-    if (!$post || $post->post_type !== 'pp_video_block') {
-        wp_send_json_error('Invalid Presto Player video');
-    }
+    $analytics = new CPP_Analytics();
+    $analytics->log_event($event_type, 'video', $video_id, [
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+        'referrer' => esc_url_raw($_SERVER['HTTP_REFERER'] ?? ''),
+    ]);
     
-    // Update the meta field
-    $result = update_post_meta($video_id, '_cpp_required_minutes', $minutes);
-    
-    if ($result !== false) {
-        wp_send_json_success('Video minutes updated successfully');
-    } else {
-        wp_send_json_error('Failed to update video minutes');
-    }
+    wp_send_json_success(['message' => 'Event tracked']);
 }
 
-// Register AJAX handlers
-add_action('wp_ajax_cpp_bulk_create_codes', 'cpp_ajax_bulk_create_codes');
-add_action('wp_ajax_cpp_create_video', 'cpp_ajax_create_video');
-add_action('wp_ajax_cpp_delete_video', 'cpp_ajax_delete_video');
-add_action('wp_ajax_cpp_update_video_minutes', 'cpp_ajax_update_video_minutes');
+/**
+ * Invalidate current session
+ */
+function cpp_ajax_invalidate_session() {
+    // CSRF protection
+    if (!check_ajax_referer('cpp_public_nonce', 'nonce', false)) {
+        wp_send_json_error(['message' => __(__('Security check failed.', 'content-protect-pro'), 'content-protect-pro')], 403);
+    }
+    
+    $session_token = $_COOKIE['cpp_session_token'] ?? '';
+    
+    if (empty($session_token)) {
+        wp_send_json_error(['message' => __(__('No active session found.', 'content-protect-pro'), 'content-protect-pro')], 400);
+    }
+    
+    // Invalidate session
+    if (!class_exists('CPP_Protection_Manager')) {
+        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-protection-manager.php';
+    }
+    
+    $protection = new CPP_Protection_Manager();
+    $result = $protection->invalidate_session($session_token);
+    
+    if ($result) {
+        wp_send_json_success(['message' => __(__('Session ended successfully.', 'content-protect-pro'), 'content-protect-pro')]);
+    }
+    
+    wp_send_json_error(['message' => __(__('Failed to end session.', 'content-protect-pro'), 'content-protect-pro')], 500);
+}

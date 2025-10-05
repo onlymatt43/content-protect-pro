@@ -1,9 +1,12 @@
 <?php
 /**
- * Analytics and logging functionality
+ * Analytics System
+ * 
+ * Logs and reports on plugin events following copilot-instructions.md patterns.
+ * Stores in cpp_analytics table with event_type, object_type, object_id, metadata.
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,330 +14,229 @@ if (!defined('ABSPATH')) {
 }
 
 class CPP_Analytics {
-
+    
     /**
-     * Log an event to the analytics table
+     * Log event to analytics table
+     * Following copilot-instructions pattern
      *
-     * @param string $event_type Event type
-     * @param string $object_type Object type (giftcode, video, etc.)
+     * @param string $event_type Event type (e.g., 'giftcode_redeemed', 'video_playback_requested')
+     * @param string $object_type Object type (e.g., 'giftcode', 'video', 'session')
      * @param string $object_id Object identifier
-     * @param array  $metadata Additional event metadata
-     * @return bool True on success, false on failure
-     * @since 1.0.0
+     * @param array $metadata Additional event data
+     * @return int|false Event ID or false on failure
      */
-    public function log_event($event_type, $object_type, $object_id, $metadata = array()) {
+    public function log_event($event_type, $object_type, $object_id, $metadata = []) {
         global $wpdb;
         
-        $settings = get_option('cpp_analytics_settings', array());
-        
-        // Check if analytics is enabled
-        if (empty($settings['enable_analytics'])) {
-            return false;
-        }
-        
-        // Check specific tracking settings
-        if ($object_type === 'giftcode' && empty($settings['track_giftcode_usage'])) {
-            return false;
-        }
-        
-        if ($object_type === 'video' && empty($settings['track_video_views'])) {
-            return false;
-        }
-        
-        $table_name = $wpdb->prefix . 'cpp_analytics';
-        
-        // Prepare metadata
-        $default_metadata = array(
-            'user_id' => get_current_user_id(),
-            'ip_address' => $this->get_client_ip(),
-            'user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '',
-        );
-        
-        $metadata = wp_parse_args($metadata, $default_metadata);
-        
-        // Anonymize IP if enabled
-        if (!empty($settings['anonymize_ip'])) {
-            $metadata['ip_address'] = $this->anonymize_ip($metadata['ip_address']);
-        }
+        $user_id = get_current_user_id();
+        $session_id = $this->get_current_session_id();
         
         $result = $wpdb->insert(
-            $table_name,
-            array(
-                'event_type' => $event_type,
-                'object_type' => $object_type,
-                'object_id' => $object_id,
-                'user_id' => $metadata['user_id'],
-                'ip_address' => $metadata['ip_address'],
-                'user_agent' => $metadata['user_agent'],
-                'metadata' => json_encode($metadata),
-            ),
-            array('%s', '%s', '%s', '%d', '%s', '%s', '%s')
+            $wpdb->prefix . 'cpp_analytics',
+            [
+                'event_type' => sanitize_text_field($event_type),
+                'object_type' => sanitize_text_field($object_type),
+                'object_id' => sanitize_text_field($object_id),
+                'user_id' => $user_id > 0 ? $user_id : null,
+                'session_id' => $session_id,
+                'metadata' => wp_json_encode($metadata),
+            ],
+            ['%s', '%s', '%s', '%d', '%d', '%s']
         );
         
-        return $result !== false;
+        return $result ? $wpdb->insert_id : false;
     }
-
+    
     /**
-     * Get analytics data with filters
+     * Get current session ID from cookie
      *
-     * @param array $args Query arguments
-     * @return array Analytics data
-     * @since 1.0.0
+     * @return int|null
      */
-    public function get_analytics($args = array()) {
+    private function get_current_session_id() {
+        if (empty($_COOKIE['cpp_session_token'])) {
+            return null;
+        }
+        
         global $wpdb;
         
-        $defaults = array(
-            'per_page' => 50,
-            'page' => 1,
-            'event_type' => '',
-            'object_type' => '',
-            'date_from' => '',
-            'date_to' => '',
-            'orderby' => 'created_at',
-            'order' => 'DESC',
-        );
+        $token = sanitize_text_field($_COOKIE['cpp_session_token']);
         
-        $args = wp_parse_args($args, $defaults);
+        $session = $wpdb->get_row($wpdb->prepare(
+            "SELECT session_id FROM {$wpdb->prefix}cpp_sessions 
+             WHERE secure_token = %s AND status = 'active' LIMIT 1",
+            $token
+        ));
         
-        $table_name = $wpdb->prefix . 'cpp_analytics';
-        
-        $where_clauses = array();
-        $prepare_values = array();
-        
-        if (!empty($args['event_type'])) {
-            $where_clauses[] = 'event_type = %s';
-            $prepare_values[] = $args['event_type'];
-        }
-        
-        if (!empty($args['object_type'])) {
-            $where_clauses[] = 'object_type = %s';
-            $prepare_values[] = $args['object_type'];
-        }
-        
-        if (!empty($args['date_from'])) {
-            $where_clauses[] = 'created_at >= %s';
-            $prepare_values[] = $args['date_from'];
-        }
-        
-        if (!empty($args['date_to'])) {
-            $where_clauses[] = 'created_at <= %s';
-            $prepare_values[] = $args['date_to'];
-        }
-        
-        $where_sql = '';
-        if (!empty($where_clauses)) {
-            $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
-        }
-        
-        // Get total count
-        $count_sql = "SELECT COUNT(*) FROM $table_name $where_sql";
-        if (!empty($prepare_values)) {
-            $count_sql = $wpdb->prepare($count_sql, $prepare_values);
-        }
-        $total = $wpdb->get_var($count_sql);
-        
-        // Get data
-        $offset = ($args['page'] - 1) * $args['per_page'];
-        $order_sql = sprintf('ORDER BY %s %s', esc_sql($args['orderby']), esc_sql($args['order']));
-        $limit_sql = $wpdb->prepare('LIMIT %d, %d', $offset, $args['per_page']);
-        
-        $data_sql = "SELECT * FROM $table_name $where_sql $order_sql $limit_sql";
-        if (!empty($prepare_values)) {
-            $data_values = array_merge($prepare_values, array($offset, $args['per_page']));
-            $data_sql = $wpdb->prepare(
-                "SELECT * FROM $table_name $where_sql $order_sql LIMIT %d, %d",
-                ...$data_values
-            );
-        }
-        
-        $events = $wpdb->get_results($data_sql);
-        
-        return array(
-            'events' => $events,
-            'total' => $total,
-            'pages' => ceil($total / $args['per_page']),
-        );
+        return $session ? (int) $session->session_id : null;
     }
-
+    
     /**
-     * Get analytics summary statistics
+     * Get events by type with date range
      *
-     * @param array $args Query arguments
-     * @return array Summary statistics
-     * @since 1.0.0
+     * @param string $event_type Event type
+     * @param string $start_date Start date (Y-m-d)
+     * @param string $end_date End date (Y-m-d)
+     * @return array Events
      */
-    public function get_summary($args = array()) {
+    public function get_events_by_type($event_type, $start_date = null, $end_date = null) {
         global $wpdb;
         
-        $defaults = array(
-            'date_from' => date('Y-m-d', strtotime('-30 days')),
-            'date_to' => date('Y-m-d'),
-        );
+        $where = ["event_type = %s"];
+        $where_values = [sanitize_text_field($event_type)];
         
-        $args = wp_parse_args($args, $defaults);
-        
-        $table_name = $wpdb->prefix . 'cpp_analytics';
-        
-        $date_where = $wpdb->prepare(
-            'WHERE created_at >= %s AND created_at <= %s',
-            $args['date_from'] . ' 00:00:00',
-            $args['date_to'] . ' 23:59:59'
-        );
-        
-        // Total events
-        $total_events = $wpdb->get_var("SELECT COUNT(*) FROM $table_name $date_where");
-        
-        // Gift code events
-        $giftcode_validations = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name $date_where AND event_type = %s",
-            'giftcode_validation_success'
-        ));
-        
-        $giftcode_failures = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name $date_where AND event_type = %s",
-            'giftcode_validation_failed'
-        ));
-        
-        // Video events
-        $video_views = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name $date_where AND event_type = %s",
-            'video_view'
-        ));
-        
-        $token_requests = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name $date_where AND event_type = %s",
-            'video_token_request'
-        ));
-        
-        // Daily breakdown
-        $daily_stats = $wpdb->get_results($wpdb->prepare(
-            "SELECT DATE(created_at) as date, COUNT(*) as count 
-             FROM $table_name $date_where 
-             GROUP BY DATE(created_at) 
-             ORDER BY date ASC"
-        ));
-        
-        return array(
-            'total_events' => intval($total_events),
-            'giftcode_validations' => intval($giftcode_validations),
-            'giftcode_failures' => intval($giftcode_failures),
-            'video_views' => intval($video_views),
-            'token_requests' => intval($token_requests),
-            'daily_stats' => $daily_stats,
-        );
-    }
-
-    /**
-     * Clean up old analytics data
-     *
-     * @param int $days Number of days to retain
-     * @return int Number of deleted records
-     * @since 1.0.0
-     */
-    public function cleanup_old_data($days = null) {
-        global $wpdb;
-        
-        if ($days === null) {
-            $settings = get_option('cpp_security_settings', array());
-            $days = isset($settings['log_retention_days']) ? intval($settings['log_retention_days']) : 30;
+        if ($start_date) {
+            $where[] = "created_at >= %s";
+            $where_values[] = sanitize_text_field($start_date) . ' 00:00:00';
         }
         
-        $cutoff_date = date('Y-m-d H:i:s', strtotime("-$days days"));
+        if ($end_date) {
+            $where[] = "created_at <= %s";
+            $where_values[] = sanitize_text_field($end_date) . ' 23:59:59';
+        }
         
-        $table_name = $wpdb->prefix . 'cpp_analytics';
+        $where_clause = implode(' AND ', $where);
         
-        $deleted = $wpdb->query($wpdb->prepare(
-            "DELETE FROM $table_name WHERE created_at < %s",
-            $cutoff_date
-        ));
+        $query = "SELECT * FROM {$wpdb->prefix}cpp_analytics 
+                  WHERE {$where_clause} 
+                  ORDER BY created_at DESC 
+                  LIMIT 1000";
         
-        return $deleted;
+        return $wpdb->get_results($wpdb->prepare($query, ...$where_values));
     }
-
+    
     /**
-     * Get client IP address
+     * Get event counts by type
      *
-     * @return string IP address
-     * @since 1.0.0
+     * @param array $event_types Event types to count
+     * @param int $days Look back days
+     * @return array ['event_type' => count]
      */
-    private function get_client_ip() {
-        $ip_keys = array('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP', 'REMOTE_ADDR');
+    public function get_event_counts($event_types = [], $days = 30) {
+        global $wpdb;
         
-        foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
-                foreach (explode(',', $_SERVER[$key]) as $ip) {
-                    $ip = trim($ip);
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                        return $ip;
-                    }
-                }
+        $counts = [];
+        $date_threshold = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+        
+        if (empty($event_types)) {
+            // Get all event types
+            $query = "SELECT event_type, COUNT(*) as count 
+                      FROM {$wpdb->prefix}cpp_analytics 
+                      WHERE created_at >= %s 
+                      GROUP BY event_type";
+            
+            $results = $wpdb->get_results($wpdb->prepare($query, $date_threshold));
+            
+            foreach ($results as $row) {
+                $counts[$row->event_type] = (int) $row->count;
+            }
+        } else {
+            // Get specific event types
+            foreach ($event_types as $type) {
+                $count = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_analytics 
+                     WHERE event_type = %s AND created_at >= %s",
+                    sanitize_text_field($type),
+                    $date_threshold
+                ));
+                
+                $counts[$type] = (int) $count;
             }
         }
         
-        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
+        return $counts;
     }
-
+    
     /**
-     * Anonymize IP address by removing last octet
+     * Get top videos by views
      *
-     * @param string $ip IP address to anonymize
-     * @return string Anonymized IP address
-     * @since 1.0.0
+     * @param int $limit Number of results
+     * @param int $days Look back days
+     * @return array Video stats
      */
-    private function anonymize_ip($ip) {
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            return preg_replace('/\.\d+$/', '.0', $ip);
-        } elseif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            return preg_replace('/:[0-9a-fA-F]+:[0-9a-fA-F]+$/', ':0:0', $ip);
-        }
-        
-        return $ip;
-    }
-
-    /**
-     * Get summary statistics for dashboard
-     *
-     * @return array Summary statistics
-     * @since 1.0.0
-     */
-    public function get_summary_stats() {
+    public function get_top_videos($limit = 10, $days = 30) {
         global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_analytics';
         
-        // Get total events
-        $total_events = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+        $date_threshold = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
         
-        // Get events in last 24 hours
-        $events_24h = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table_name} WHERE created_at >= %s",
-            date('Y-m-d H:i:s', strtotime('-24 hours'))
+        $query = "SELECT 
+                    object_id as video_id,
+                    COUNT(*) as views,
+                    COUNT(DISTINCT session_id) as unique_sessions
+                  FROM {$wpdb->prefix}cpp_analytics 
+                  WHERE event_type = 'video_playback_requested' 
+                  AND created_at >= %s 
+                  GROUP BY object_id 
+                  ORDER BY views DESC 
+                  LIMIT %d";
+        
+        return $wpdb->get_results($wpdb->prepare($query, $date_threshold, absint($limit)));
+    }
+    
+    /**
+     * Get dashboard statistics
+     *
+     * @return array Stats
+     */
+    public function get_dashboard_stats() {
+        global $wpdb;
+        
+        $today = gmdate('Y-m-d');
+        $week_ago = gmdate('Y-m-d', strtotime('-7 days'));
+        
+        // Gift codes redeemed (last 7 days)
+        $codes_redeemed = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_analytics 
+             WHERE event_type = 'giftcode_redeemed' 
+             AND created_at >= %s",
+            $week_ago . ' 00:00:00'
         ));
         
-        // Get security events in last 30 days
-        $security_events = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'security' AND created_at >= %s",
-            date('Y-m-d H:i:s', strtotime('-30 days'))
-        ));
-        
-        // Get gift code events
-        $giftcode_events = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'giftcode' AND created_at >= %s",
-            date('Y-m-d H:i:s', strtotime('-30 days'))
-        ));
-        
-        // Get video events
-        $video_events = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table_name} WHERE object_type = 'video' AND created_at >= %s",
-            date('Y-m-d H:i:s', strtotime('-30 days'))
-        ));
-        
-        return array(
-            'total_events' => intval($total_events) ?: 0,
-            'events_24h' => intval($events_24h) ?: 0,
-            'security_events' => intval($security_events) ?: 0,
-            'giftcode_events' => intval($giftcode_events) ?: 0,
-            'video_events' => intval($video_events) ?: 0,
+        // Active sessions
+        $active_sessions = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_sessions 
+             WHERE status = 'active' AND expires_at > NOW()"
         );
+        
+        // Total videos
+        $total_videos = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_protected_videos 
+             WHERE status = 'active'"
+        );
+        
+        // Video views today
+        $views_today = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_analytics 
+             WHERE event_type = 'video_playback_requested' 
+             AND created_at >= %s",
+            $today . ' 00:00:00'
+        ));
+        
+        return [
+            'codes_redeemed_week' => (int) $codes_redeemed,
+            'active_sessions' => (int) $active_sessions,
+            'total_videos' => (int) $total_videos,
+            'views_today' => (int) $views_today,
+        ];
+    }
+    
+    /**
+     * Clean old analytics data
+     * Called by daily cron job
+     *
+     * @param int $days Keep data newer than X days
+     * @return int Rows deleted
+     */
+    public function cleanup_old_data($days = 90) {
+        global $wpdb;
+        
+        $date_threshold = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+        
+        $result = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}cpp_analytics 
+             WHERE created_at < %s",
+            $date_threshold
+        ));
+        
+        return (int) $result;
     }
 }

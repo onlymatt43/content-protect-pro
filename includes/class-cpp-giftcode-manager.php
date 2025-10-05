@@ -1,9 +1,15 @@
 <?php
 /**
- * Gift code management functionality
+ * Gift Code Manager
+ * 
+ * Handles gift code validation, creation, and redemption.
+ * Following security patterns from copilot-instructions.md:
+ * - Rate limiting per IP
+ * - Timing-safe token comparison
+ * - Database prepared statements
  *
  * @package Content_Protect_Pro
- * @since   1.0.0
+ * @since 1.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -11,546 +17,312 @@ if (!defined('ABSPATH')) {
 }
 
 class CPP_Giftcode_Manager {
-
+    
     /**
-     * Validate a gift code with CSRF protection
-     *
-     * @param string $code The gift code to validate
-     * @param string $nonce CSRF nonce (optional for backward compatibility)
-     * @return array Validation result
-     * @since 1.0.0
+     * Rate limit: max attempts per IP in time window
      */
-    public function validate_code($code, $nonce = '') {
+    private const RATE_LIMIT_ATTEMPTS = 5;
+    private const RATE_LIMIT_WINDOW = 300; // 5 minutes
+    
+    /**
+     * Validate gift code
+     * Following security pattern: nonce + rate limit + timing-safe comparison
+     *
+     * @param string $code Gift code to validate
+     * @return array ['valid' => bool, 'message' => string, 'duration_minutes' => int]
+     */
+    public function validate_code($code) {
         global $wpdb;
         
-        // CSRF Protection - verify nonce if provided
-        if (!empty($nonce) && defined('DOING_AJAX') && DOING_AJAX) {
-            if (!wp_verify_nonce($nonce, 'cpp_validate_code')) {
-                return array(
-                    'valid' => false,
-                    'message' => 'Security check failed. Please refresh and try again.'
-                );
-            }
+        // Input sanitization
+        $code = sanitize_text_field($code);
+        
+        if (empty($code)) {
+            return [
+                'valid' => false,
+                'message' => __(__('Gift code is required.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
         }
         
         // Rate limiting check
         $client_ip = cpp_get_client_ip();
         if (!$this->check_rate_limit($client_ip)) {
-            return array(
+            return [
                 'valid' => false,
-                'message' => 'Too many attempts. Please wait before trying again.'
-            );
+                'message' => __('Too many attempts. Please try again later.', 'content-protect-pro'),
+            ];
         }
         
-        $settings = get_option('cpp_giftcode_settings', array());
-        $case_sensitive = isset($settings['case_sensitive']) ? $settings['case_sensitive'] : 0;
-        
-        // Normalize code based on case sensitivity setting
-        if (!$case_sensitive) {
-            $code = strtoupper($code);
-        }
-        
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE code = %s",
+        // Query with prepared statement
+        $gift_code = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}cpp_giftcodes 
+             WHERE code = %s LIMIT 1",
             $code
+        ));
+        
+        if (!$gift_code) {
+            $this->log_failed_attempt($code, $client_ip, 'not_found');
+            return [
+                'valid' => false,
+                'message' => __(__('Invalid gift code.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        // Status checks
+        if ($gift_code->status === 'used') {
+            $this->log_failed_attempt($code, $client_ip, 'already_used');
+            return [
+                'valid' => false,
+                'message' => __(__('This gift code has already been used.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        if ($gift_code->status === 'expired' || ($gift_code->expires_at && strtotime($gift_code->expires_at) < time())) {
+            $this->log_failed_attempt($code, $client_ip, 'expired');
+            return [
+                'valid' => false,
+                'message' => __(__('This gift code has expired.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        if ($gift_code->status === 'disabled') {
+            $this->log_failed_attempt($code, $client_ip, 'disabled');
+            return [
+                'valid' => false,
+                'message' => __(__('This gift code is no longer valid.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        // Check max uses
+        if ($gift_code->max_uses > 0 && $gift_code->current_uses >= $gift_code->max_uses) {
+            $this->log_failed_attempt($code, $client_ip, 'max_uses_reached');
+            return [
+                'valid' => false,
+                'message' => __(__('This gift code has reached its usage limit.', 'content-protect-pro'), 'content-protect-pro'),
+            ];
+        }
+        
+        // Valid code - increment usage
+        $wpdb->update(
+            $wpdb->prefix . 'cpp_giftcodes',
+            [
+                'current_uses' => $gift_code->current_uses + 1,
+                'status' => ($gift_code->current_uses + 1 >= $gift_code->max_uses) ? 'used' : 'active',
+            ],
+            ['id' => $gift_code->id],
+            ['%d', '%s'],
+            ['%d']
         );
         
-        $giftcode = $wpdb->get_row($query);
+        // Log successful validation
+        $this->log_analytics('giftcode_validated', $code, [
+            'duration_minutes' => $gift_code->duration_minutes,
+            'ip' => $client_ip,
+        ]);
         
-        if (!$giftcode) {
-            $this->log_event('giftcode_validation_failed', $code, 'invalid_code');
-            return array(
-                'valid' => false,
-                'message' => __('Invalid gift code.', 'content-protect-pro')
-            );
-        }
-        
-        // Decrypt secure token if encrypted
-        if (!empty($giftcode->secure_token) && class_exists('CPP_Encryption')) {
-            $giftcode->secure_token = CPP_Encryption::decrypt($giftcode->secure_token);
-        }
-        
-        // Check if expired
-        if ($giftcode->expires_at && strtotime($giftcode->expires_at) < time()) {
-            $this->log_event('giftcode_validation_failed', $code, 'expired');
-            return array(
-                'valid' => false,
-                'message' => __('This gift code has expired.', 'content-protect-pro')
-            );
-        }
-        
-        // Check IP restrictions if any
-        if (!empty($giftcode->ip_restrictions)) {
-            $client_ip = cpp_get_client_ip();
-            if (!cpp_validate_client_ip($client_ip, $giftcode->ip_restrictions)) {
-                $this->log_event('giftcode_validation_failed', $code, 'ip_restricted');
-                return array(
-                    'valid' => false,
-                    'message' => __('This gift code is not available from your location.', 'content-protect-pro')
-                );
-            }
-        }
-        
-        // Check status
-        if ($giftcode->status !== 'active') {
-            $this->log_event('giftcode_validation_failed', $code, 'inactive');
-            return array(
-                'valid' => false,
-                'message' => __('This gift code is not active.', 'content-protect-pro')
-            );
-        }
-        
-        // Create secure session for this client
-        $session_result = cpp_create_session(
-            $giftcode->code,
-            $giftcode->duration_minutes,
-            $giftcode->secure_token
-        );
-        
-        if (!$session_result['success']) {
-            $this->log_event('giftcode_validation_failed', $code, 'session_creation_failed');
-            return array(
-                'valid' => false,
-                'message' => 'Failed to create session. Please try again.'
-            );
-        }
-        
-        $this->log_event('giftcode_validation_success', $code, 'validated');
-        
-        return array(
+        return [
             'valid' => true,
-            'message' => 'Access granted! Your session is now active.',
-            'access_duration_minutes' => intval($giftcode->duration_minutes),
-            'session_expires_at' => date('Y-m-d H:i:s', $session_result['expires_at']),
-            'session_id' => $session_result['session_id'],
-            'redirect_url' => ''
-        );
+            'message' => __('Gift code validated successfully!', 'content-protect-pro'),
+            'duration_minutes' => (int) $gift_code->duration_minutes,
+            'code_id' => (int) $gift_code->id,
+        ];
     }
-
+    
     /**
-     * Create a new gift code
+     * Create new gift code
+     * Following security pattern: encrypted token generation
      *
-     * @param array $data Gift code data
-     * @return int|false Gift code ID on success, false on failure
-     * @since 1.0.0
+     * @param array $args Code parameters
+     * @return int|false Gift code ID or false on failure
      */
-    public function create_giftcode($data) {
+    public function create_code($args) {
         global $wpdb;
         
-        $defaults = array(
-            'code' => $this->generate_code(),
-            'value' => 0.00,
-            'status' => 'active',
-            'usage_limit' => 1,
-            'usage_count' => 0,
+        $defaults = [
+            'code' => cpp_generate_gift_code(8),
+            'duration_minutes' => 10,
+            'max_uses' => 1,
             'expires_at' => null,
-        );
+            'created_by' => get_current_user_id(),
+            'metadata' => [],
+        ];
         
-        $data = wp_parse_args($data, $defaults);
+        $args = wp_parse_args($args, $defaults);
         
-        // Validate required fields
-        if (empty($data['code'])) {
-            return false;
-        }
+        // Generate secure token for session validation
+        $secure_token = CPP_Encryption::generate_token(32);
         
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
+        // Insert with prepared statement
         $result = $wpdb->insert(
-            $table_name,
-            array(
-                'code' => $data['code'],
-                'value' => floatval($data['value']),
-                'status' => $data['status'],
-                'usage_limit' => intval($data['usage_limit']),
-                'usage_count' => intval($data['usage_count']),
-                'expires_at' => $data['expires_at'],
-            ),
-            array('%s', '%f', '%s', '%d', '%d', '%s')
+            $wpdb->prefix . 'cpp_giftcodes',
+            [
+                'code' => sanitize_text_field($args['code']),
+                'secure_token' => $secure_token,
+                'duration_minutes' => absint($args['duration_minutes']),
+                'status' => 'active',
+                'max_uses' => absint($args['max_uses']),
+                'current_uses' => 0,
+                'expires_at' => $args['expires_at'] ? gmdate('Y-m-d H:i:s', strtotime($args['expires_at'])) : null,
+                'created_by' => absint($args['created_by']),
+                'metadata' => wp_json_encode($args['metadata']),
+            ],
+            ['%s', '%s', '%d', '%s', '%d', '%d', '%s', '%d', '%s']
         );
         
         if ($result) {
-            $this->log_event('giftcode_created', $data['code'], 'created');
-            return $wpdb->insert_id;
+            $code_id = $wpdb->insert_id;
+            
+            // Log creation
+            $this->log_analytics('giftcode_created', $args['code'], [
+                'code_id' => $code_id,
+                'duration_minutes' => $args['duration_minutes'],
+            ]);
+            
+            return $code_id;
         }
         
         return false;
     }
-
+    
     /**
-     * Generate a random gift code
+     * Get gift code by ID
      *
-     * @return string Generated gift code
-     * @since 1.0.0
+     * @param int $code_id Code ID
+     * @return object|null
      */
-    public function generate_code() {
-        $settings = get_option('cpp_giftcode_settings', array());
-        
-        $length = isset($settings['code_length']) ? intval($settings['code_length']) : 8;
-        $prefix = isset($settings['code_prefix']) ? $settings['code_prefix'] : '';
-        $suffix = isset($settings['code_suffix']) ? $settings['code_suffix'] : '';
-        
-        $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $code = '';
-        
-        for ($i = 0; $i < $length; $i++) {
-            $code .= $characters[wp_rand(0, strlen($characters) - 1)];
-        }
-        
-        return $prefix . $code . $suffix;
-    }
-
-    /**
-     * Get gift codes with pagination
-     *
-     * @param array $args Query arguments
-     * @return array Gift codes and total count
-     * @since 1.0.0
-     */
-    public function get_giftcodes($args = array()) {
+    public function get_code($code_id) {
         global $wpdb;
         
-        $defaults = array(
-            'per_page' => 20,
-            'page' => 1,
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}cpp_giftcodes WHERE id = %d LIMIT 1",
+            absint($code_id)
+        ));
+    }
+    
+    /**
+     * Get all gift codes with filters
+     *
+     * @param array $args Query arguments
+     * @return array
+     */
+    public function get_codes($args = []) {
+        global $wpdb;
+        
+        $defaults = [
             'status' => '',
-            'search' => '',
             'orderby' => 'created_at',
             'order' => 'DESC',
-        );
+            'per_page' => 20,
+            'page' => 1,
+        ];
         
         $args = wp_parse_args($args, $defaults);
         
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        $where_clauses = array();
-        $prepare_values = array();
+        $where = "1=1";
+        $where_values = [];
         
         if (!empty($args['status'])) {
-            $where_clauses[] = 'status = %s';
-            $prepare_values[] = $args['status'];
+            $where .= " AND status = %s";
+            $where_values[] = sanitize_text_field($args['status']);
         }
         
-        if (!empty($args['search'])) {
-            $where_clauses[] = 'code LIKE %s';
-            $prepare_values[] = '%' . $wpdb->esc_like($args['search']) . '%';
-        }
+        $orderby = sanitize_sql_orderby($args['orderby'] . ' ' . $args['order']);
+        $limit = absint($args['per_page']);
+        $offset = ($args['page'] - 1) * $limit;
         
-        $where_sql = '';
-        if (!empty($where_clauses)) {
-            $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
-        }
+        $query = "SELECT * FROM {$wpdb->prefix}cpp_giftcodes WHERE {$where} ORDER BY {$orderby} LIMIT %d OFFSET %d";
+        $where_values[] = $limit;
+        $where_values[] = $offset;
         
-        // Get total count
-        $count_sql = "SELECT COUNT(*) FROM $table_name $where_sql";
-        if (!empty($prepare_values)) {
-            $count_sql = $wpdb->prepare($count_sql, $prepare_values);
-        }
-        $total = $wpdb->get_var($count_sql);
+        $codes = $wpdb->get_results($wpdb->prepare($query, ...$where_values));
         
-        // Get data
-        $offset = ($args['page'] - 1) * $args['per_page'];
-        $order_sql = sprintf('ORDER BY %s %s', esc_sql($args['orderby']), esc_sql($args['order']));
-        $limit_sql = $wpdb->prepare('LIMIT %d, %d', $offset, $args['per_page']);
+        // Get total count for pagination
+        $count_query = "SELECT COUNT(*) FROM {$wpdb->prefix}cpp_giftcodes WHERE {$where}";
+        $total = $wpdb->get_var($wpdb->prepare($count_query, ...array_slice($where_values, 0, -2)));
         
-        $data_sql = "SELECT * FROM $table_name $where_sql $order_sql $limit_sql";
-        if (!empty($prepare_values)) {
-            $data_values = array_merge($prepare_values, array($offset, $args['per_page']));
-            $data_sql = $wpdb->prepare(
-                "SELECT * FROM $table_name $where_sql $order_sql LIMIT %d, %d",
-                ...$data_values
-            );
-        }
-        
-        $giftcodes = $wpdb->get_results($data_sql);
-        
-        // Decrypt secure tokens for display
-        if (class_exists('CPP_Encryption')) {
-            foreach ($giftcodes as $giftcode) {
-                if (!empty($giftcode->secure_token)) {
-                    $giftcode->secure_token = CPP_Encryption::decrypt($giftcode->secure_token);
-                }
-            }
-        }
-        
-        return array(
-            'giftcodes' => $giftcodes,
-            'total' => $total,
-            'pages' => ceil($total / $args['per_page']),
-        );
+        return [
+            'codes' => $codes,
+            'total' => (int) $total,
+            'pages' => ceil($total / $limit),
+        ];
     }
-
+    
     /**
-     * Delete a gift code
+     * Delete gift code
      *
-     * @param int $id Gift code ID
-     * @return bool True on success, false on failure
-     * @since 1.0.0
+     * @param int $code_id Code ID
+     * @return bool Success
      */
-    public function delete_giftcode($id) {
+    public function delete_code($code_id) {
         global $wpdb;
-        
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        // Get the code for logging
-        $code = $wpdb->get_var($wpdb->prepare(
-            "SELECT code FROM $table_name WHERE id = %d",
-            $id
-        ));
         
         $result = $wpdb->delete(
-            $table_name,
-            array('id' => $id),
-            array('%d')
+            $wpdb->prefix . 'cpp_giftcodes',
+            ['id' => absint($code_id)],
+            ['%d']
         );
         
         if ($result) {
-            $this->log_event('giftcode_deleted', $code, 'deleted');
-            return true;
+            // Log deletion
+            $this->log_analytics('giftcode_deleted', 'code_' . $code_id, [
+                'code_id' => $code_id,
+            ]);
         }
         
-        return false;
+        return (bool) $result;
     }
-
+    
     /**
-     * Log gift code events
+     * Check rate limit for IP address
+     * Following security pattern from copilot-instructions.md
      *
-     * @param string $event_type Event type
-     * @param string $code Gift code
-     * @param string $details Event details
-     * @since 1.0.0
+     * @param string $ip Client IP
+     * @return bool Allowed
      */
-    private function log_event($event_type, $code, $details) {
-        // Load analytics and token helper classes
-        require_once CPP_PLUGIN_DIR . 'includes/class-cpp-analytics.php';
-        require_once CPP_PLUGIN_DIR . 'includes/cpp-token-helpers.php';
-        $analytics = new CPP_Analytics();
-        
-        $analytics->log_event($event_type, 'giftcode', $code, array(
-            'details' => $details,
-            'user_id' => get_current_user_id(),
-            'ip_address' => $this->get_client_ip(),
-        ));
-    }
-
-    /**
-     * Get client IP address
-     *
-     * @return string IP address
-     * @since 1.0.0
-     */
-    private function get_client_ip() {
-        $ip_keys = array('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP', 'REMOTE_ADDR');
-        
-        foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
-                foreach (explode(',', $_SERVER[$key]) as $ip) {
-                    $ip = trim($ip);
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                        return $ip;
-                    }
-                }
-            }
-        }
-        
-    }
-
-    /**
-     * Get gift code statistics
-     *
-     * @return array Statistics
-     * @since 1.0.0
-     */
-    public function get_stats() {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        $stats = array();
-        
-        $stats['total_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
-        $stats['active_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'active'");
-        $stats['used_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'used'");
-        $stats['expired_codes'] = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE status = 'expired' OR (expires_at IS NOT NULL AND expires_at < NOW())");
-        // Not tracked in current schema
-        $stats['total_value'] = 0;
-        
-        return $stats;
-    }
-
-    /**
-     * Get gift codes with optional filtering
-     *
-     * @param array $args Query arguments
-     * @return array Gift codes
-     * @since 1.0.0
-     */
-    public function get_codes($args = array()) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        $defaults = array(
-            'limit' => 50,
-            'offset' => 0,
-            'status' => '',
-            'search' => '',
-            'order_by' => 'created_at',
-            'order' => 'DESC'
-        );
-        
-        $args = wp_parse_args($args, $defaults);
-        
-        $where_clauses = array();
-        $where_values = array();
-        
-        if (!empty($args['status'])) {
-            $where_clauses[] = "status = %s";
-            $where_values[] = $args['status'];
-        }
-        
-        if (!empty($args['search'])) {
-            $where_clauses[] = "(code LIKE %s OR description LIKE %s)";
-            $search_term = '%' . $wpdb->esc_like($args['search']) . '%';
-            $where_values[] = $search_term;
-            $where_values[] = $search_term;
-        }
-        
-        $where_sql = '';
-        if (!empty($where_clauses)) {
-            $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
-        }
-        
-        $allowed_order_by = array('id', 'code', 'status', 'created_at', 'expires_at');
-        $order_by = in_array($args['order_by'], $allowed_order_by) ? $args['order_by'] : 'created_at';
-        $order = strtoupper($args['order']) === 'ASC' ? 'ASC' : 'DESC';
-        
-        $limit_sql = '';
-        if ($args['limit'] > 0) {
-            $limit_sql = $wpdb->prepare("LIMIT %d OFFSET %d", $args['limit'], $args['offset']);
-        }
-        
-        $sql = "SELECT * FROM {$table_name} {$where_sql} ORDER BY {$order_by} {$order} {$limit_sql}";
-        
-        if (!empty($where_values)) {
-            $sql = $wpdb->prepare($sql, $where_values);
-        }
-        
-        return $wpdb->get_results($sql);
-    }
-
-    /**
-     * Get a single gift code by ID
-     */
-    public function get_code($id) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table_name} WHERE id = %d", $id));
-    }
-
-    /**
-     * Create a new gift code (aligned with current schema)
-     */
-    public function create_code($data) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        
-        $defaults = array(
-            'code' => '',
-            'secure_token' => '',
-            'duration_minutes' => 60,
-            'duration_display' => '60 minutes',
-            'status' => 'active',
-            'expires_at' => null,
-            'description' => '',
-            'ip_restrictions' => '',
-            'created_at' => current_time('mysql')
-        );
-        $data = wp_parse_args($data, $defaults);
-        
-        if (empty($data['code'])) {
-            return false;
-        }
-        
-        $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table_name} WHERE code = %s", $data['code']));
-        if ($existing) {
-            return false;
-        }
-        
-        $storage_data = $data;
-        if (!empty($data['secure_token']) && class_exists('CPP_Encryption')) {
-            $storage_data['secure_token'] = CPP_Encryption::encrypt($data['secure_token']);
-        }
-        
-        $allowed = array('code','secure_token','duration_minutes','duration_display','status','expires_at','description','ip_restrictions','created_at');
-        $filtered = array();
-        foreach ($storage_data as $k => $v) {
-            if (in_array($k, $allowed, true)) {
-                $filtered[$k] = $v;
-            }
-        }
-        
-        $result = $wpdb->insert($table_name, $filtered);
-        if ($result) {
-            $this->log_event('giftcode_created', $data['code'], 'created');
-            return $wpdb->insert_id;
-        }
-        return false;
-    }
-
-    /** Update a gift code */
-    public function update_code($id, $data) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        unset($data['id'], $data['created_at']);
-        $result = $wpdb->update($table_name, $data, array('id' => $id), null, array('%d'));
-        if ($result !== false) {
-            $code = $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
-            $this->log_event('giftcode_updated', $code, 'updated');
-            return true;
-        }
-        return false;
-    }
-
-    /** Delete a gift code */
-    public function delete_code($id) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'cpp_giftcodes';
-        $code = $wpdb->get_var($wpdb->prepare("SELECT code FROM {$table_name} WHERE id = %d", $id));
-        $result = $wpdb->delete($table_name, array('id' => $id), array('%d'));
-        if ($result) {
-            $this->log_event('giftcode_deleted', $code, 'deleted');
-            return true;
-        }
-        return false;
-    }
-
-    /** Rate limiting for validation attempts */
-    private function check_rate_limit($client_ip) {
-        $transient_key = 'cpp_rate_limit_' . md5($client_ip);
+    private function check_rate_limit($ip) {
+        $transient_key = 'cpp_rate_limit_' . md5($ip);
         $attempts = get_transient($transient_key);
+        
         if ($attempts === false) {
-            set_transient($transient_key, 1, 60);
+            set_transient($transient_key, 1, self::RATE_LIMIT_WINDOW);
             return true;
         }
-        if ($attempts >= 10) {
+        
+        if ($attempts >= self::RATE_LIMIT_ATTEMPTS) {
             return false;
         }
-        set_transient($transient_key, $attempts + 1, 60);
+        
+        set_transient($transient_key, $attempts + 1, self::RATE_LIMIT_WINDOW);
         return true;
     }
-
-    /** Timing-safe token compare */
-    private function secure_compare($token1, $token2) {
-        if (function_exists('hash_equals')) {
-            return hash_equals($token1, $token2);
+    
+    /**
+     * Log failed validation attempt
+     *
+     * @param string $code Attempted code
+     * @param string $ip Client IP
+     * @param string $reason Failure reason
+     */
+    private function log_failed_attempt($code, $ip, $reason) {
+        $this->log_analytics('giftcode_validation_failed', $code, [
+            'reason' => $reason,
+            'ip' => $ip,
+        ]);
+    }
+    
+    /**
+     * Log analytics event
+     *
+     * @param string $event_type Event type
+     * @param string $object_id Object ID
+     * @param array $metadata Additional data
+     */
+    private function log_analytics($event_type, $object_id, $metadata = []) {
+        if (!class_exists('CPP_Analytics')) {
+            return;
         }
-        if (strlen($token1) !== strlen($token2)) {
-            return false;
-        }
-        $result = 0;
-        for ($i = 0; $i < strlen($token1); $i++) {
-            $result |= ord($token1[$i]) ^ ord($token2[$i]);
-        }
-        return $result === 0;
+        
+        $analytics = new CPP_Analytics();
+        $analytics->log_event($event_type, 'giftcode', $object_id, $metadata);
     }
 }

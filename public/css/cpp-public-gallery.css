@@ -1,0 +1,901 @@
+/* ============================================================
+   Content Protect Pro — Gallery + Modal CSS
+   - Focus: clear grid layout, accessible modal, override-friendly
+   - JS toggles modal visibility via aria-hidden="false"
+   - Keep variables here so site builders can override them easily
+   ============================================================ */
+
+:root {
+  --cpp-gutter: 16px;
+  --cpp-bg: #ffffff;
+  --cpp-border: #ececec;
+  --cpp-muted: #666666;
+  --cpp-accent: #d63638;
+  --cpp-modal-bg: rgba(0,0,0,0.6);
+  --cpp-modal-content-bg: #ffffff;
+  --cpp-radius: 8px;
+}
+
+/* -----------------------------
+   Gallery grid
+   ----------------------------- */
+.cpp-video-grid {
+  display: grid;
+  gap: var(--cpp-gutter);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.cpp-video-item {
+  background: var(--cpp-bg);
+  border: 1px solid var(--cpp-border);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.cpp-video-item:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+
+.cpp-video-link { display: flex; text-decoration: none; color: inherit; align-items: stretch; }
+
+.cpp-video-thumbnail {
+  width: 40%;
+  min-height: 140px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex-shrink: 0;
+}
+.cpp-video-thumbnail img { width:100%; height:100%; object-fit:cover; display:block; }
+
+.cpp-video-info {
+  padding: 12px;
+  width: 60%;
+  display:flex;
+  flex-direction:column;
+  justify-content: center;
+}
+.cpp-video-info h4 { margin:0 0 8px 0; font-size:16px; }
+.cpp-video-info p { margin:0; color:var(--cpp-muted); font-size:13px; }
+.cpp-video-meta { margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.cpp-integration-badge { background:#f1f1f1; padding:4px 8px; border-radius:4px; font-size:12px; }
+.cpp-requires-code { color:var(--cpp-accent); font-weight:bold; }
+
+/* If layout collapses on small screens, stack thumbnail above info */
+@media (max-width:720px) {
+  .cpp-video-link { flex-direction: column; }
+  .cpp-video-thumbnail { width:100%; height:160px; }
+  .cpp-video-info { width:100%; }
+}
+
+/* -----------------------------
+   Preview modal (scoped to #cpp-video-modal to avoid collisions)
+   JS must toggle aria-hidden="false" to show the modal
+   ----------------------------- */
+#cpp-video-modal {
+  position: fixed;
+  inset: 0;
+  display: none; /* keep out of flow until explicitly shown */
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  background: var(--cpp-modal-bg);
+}
+/* when hidden, ensure no interaction or layout impact */
+#cpp-video-modal[aria-hidden="true"] { display: none; pointer-events: none; }
+#cpp-video-modal[aria-hidden="false"] { display: flex; pointer-events: auto; }
+
+/* Overlay (background layer inside the modal) */
+#cpp-video-modal .cpp-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.65) !important; /* force dark backdrop for this modal */
+}
+
+#cpp-video-modal .cpp-modal-content {
+  background: var(--cpp-modal-content-bg);
+  border-radius: var(--cpp-radius);
+  max-width: 960px;
+  width: calc(100% - 48px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  overflow: hidden;
+  position: relative !important; /* override theme CSS that may absolutely position the content */
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  margin: 0 auto !important;
+}
+#cpp-video-modal .cpp-modal-body { padding: 0; }
+#cpp-video-modal .cpp-preview-spinner { display:flex; align-items:center; justify-content:center; min-height:160px; padding:24px; }
+
+/* Accessible close button */
+#cpp-video-modal .cpp-modal-close {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: transparent;
+  border: none;
+  color: #333;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px;
+}
+
+#cpp-video-modal .cpp-modal-content iframe,
+#cpp-video-modal .cpp-modal-content img,
+#cpp-video-modal .cpp-modal-content video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Specific container used by JS to inject preview HTML */
+#cpp-modal-video-container, #cpp-video-modal #cpp-modal-video-container {
+  width: 100%;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.cpp-preview-card { display:flex; gap:16px; align-items:flex-start; padding:16px; }
+.cpp-preview-thumb img { max-width:220px; width:220px; height:auto; border-radius:6px; object-fit:cover; }
+.cpp-preview-meta h3 { margin:0 0 8px 0; }
+.cpp-preview-meta p { margin:0; color:#555; }
+
+@media (max-width:900px) {
+  .cpp-video-thumbnail { display:none; }
+  .cpp-video-info { width:100%; }
+  #cpp-video-modal .cpp-modal-content { width: 96%; }
+  .cpp-preview-thumb img { max-width: 140px; width:140px; }
+  .cpp-preview-card { flex-direction:column; align-items:center; text-align:center; }
+}
+
+/* Small helper: visually hide but keep available to assistive tech */
+.cpp-hidden-visually {
+  position: absolute !important;
+  height: 1px; width: 1px; overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px); white-space: nowrap;
+}
+
+/**
+ * Enhanced Video Library Styles
+ * 
+ * Provides modern, responsive gallery layout with accessibility support.
+ * Follows WordPress admin color schemes and mobile-first design.
+ * 
+ * @package ContentProtectPro
+ * @since 3.1.0
+ */
+
+/* ==========================================================================
+   Base Container & Layout
+   ========================================================================== */
+
+.cpp-video-library-enhanced {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 0 20px;
+}
+
+/* No session state */
+.cpp-library-locked {
+    text-align: center;
+    padding: 60px 20px;
+    background: #fff;
+    border: 2px dashed #dcdcde;
+    border-radius: 8px;
+    margin: 40px 0;
+}
+
+.cpp-lock-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cpp-lock-icon .dashicons {
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+    color: #fff;
+}
+
+.cpp-library-locked h3 {
+    font-size: 24px;
+    margin: 0 0 10px;
+    color: #1d2327;
+}
+
+.cpp-library-locked p {
+    font-size: 16px;
+    color: #50575e;
+    margin-bottom: 30px;
+}
+
+/* ==========================================================================
+   Search & Filter Controls
+   ========================================================================== */
+
+.cpp-library-controls {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.cpp-library-search {
+    flex: 1;
+    min-width: 250px;
+    position: relative;
+}
+
+.cpp-search-input {
+    width: 100%;
+    padding: 12px 45px 12px 15px;
+    border: 2px solid #dcdcde;
+    border-radius: 6px;
+    font-size: 15px;
+    transition: border-color 0.2s;
+}
+
+.cpp-search-input:focus {
+    border-color: #2271b1;
+    outline: none;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.cpp-search-btn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    color: #50575e;
+    transition: color 0.2s;
+}
+
+.cpp-search-btn:hover {
+    color: #2271b1;
+}
+
+.cpp-search-btn .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.cpp-library-filters {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.cpp-library-filters label {
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0;
+}
+
+.cpp-filter-select {
+    padding: 10px 35px 10px 15px;
+    border: 2px solid #dcdcde;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+    min-width: 180px;
+    transition: border-color 0.2s;
+}
+
+.cpp-filter-select:focus {
+    border-color: #2271b1;
+    outline: none;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+/* ==========================================================================
+   Session Info Bar
+   ========================================================================== */
+
+.cpp-session-info {
+    display: flex;
+    gap: 20px;
+    padding: 15px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border-radius: 6px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 14px;
+}
+
+.cpp-session-icon {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.cpp-session-icon .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.cpp-session-minutes,
+.cpp-session-expires {
+    opacity: 0.95;
+}
+
+/* ==========================================================================
+   Results Count
+   ========================================================================== */
+
+.cpp-results-count {
+    font-size: 14px;
+    color: #50575e;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+/* ==========================================================================
+   Video Grid
+   ========================================================================== */
+
+.cpp-video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 25px;
+    margin-bottom: 40px;
+    position: relative;
+    min-height: 200px;
+}
+
+.cpp-video-grid[data-columns="2"] {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+}
+
+.cpp-video-grid[data-columns="4"] {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
+/* Loading state */
+.cpp-loading-spinner {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.cpp-loading-spinner .spinner {
+    float: none;
+    margin: 0 auto 15px;
+}
+
+.cpp-loading-spinner p {
+    color: #50575e;
+    font-size: 14px;
+}
+
+/* Empty state */
+.cpp-no-videos,
+.cpp-error {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: #646970;
+    font-size: 16px;
+}
+
+.cpp-error {
+    color: #d63638;
+    background: #fcf0f1;
+    border: 1px solid #d63638;
+    border-radius: 4px;
+}
+
+/* ==========================================================================
+   Video Cards
+   ========================================================================== */
+
+.cpp-video-card {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.cpp-video-card:not(.cpp-video-locked):hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.cpp-video-card:not(.cpp-video-locked):focus {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+/* Locked state */
+.cpp-video-card.cpp-video-locked {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.cpp-video-card.cpp-video-locked:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* ==========================================================================
+   Video Thumbnail
+   ========================================================================== */
+
+.cpp-video-thumbnail {
+    position: relative;
+    width: 100%;
+    padding-top: 56.25%; /* 16:9 aspect ratio */
+    background: #000;
+    overflow: hidden;
+}
+
+.cpp-video-thumbnail img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.cpp-video-card:not(.cpp-video-locked):hover .cpp-video-thumbnail img {
+    transform: scale(1.05);
+}
+
+/* Play button overlay */
+.cpp-video-play-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    background: rgba(34, 113, 177, 0.9);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.cpp-video-card:not(.cpp-video-locked):hover .cpp-video-play-btn {
+    opacity: 1;
+}
+
+.cpp-video-play-btn .dashicons {
+    color: #fff;
+    font-size: 30px;
+    width: 30px;
+    height: 30px;
+    margin-left: 3px; /* Center the play icon */
+}
+
+/* Lock overlay for restricted videos */
+.cpp-video-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: #fff;
+}
+
+.cpp-video-overlay .dashicons {
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+}
+
+.cpp-required-minutes {
+    font-size: 14px;
+    font-weight: 600;
+    background: rgba(214, 54, 56, 0.9);
+    padding: 5px 12px;
+    border-radius: 4px;
+}
+
+/* Duration badge */
+.cpp-video-duration {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Video Info
+   ========================================================================== */
+
+.cpp-video-info {
+    padding: 15px;
+}
+
+.cpp-video-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: #1d2327;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cpp-video-description {
+    font-size: 14px;
+    color: #646970;
+    margin: 0 0 12px;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cpp-video-meta {
+    display: flex;
+    gap: 15px;
+    font-size: 13px;
+    color: #787c82;
+    flex-wrap: wrap;
+}
+
+.cpp-video-category,
+.cpp-video-type {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.cpp-video-meta .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* ==========================================================================
+   Pagination
+   ========================================================================== */
+
+.cpp-library-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+}
+
+.cpp-page-btn {
+    padding: 10px 16px;
+    border: 2px solid #dcdcde;
+    background: #fff;
+    color: #2271b1;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.cpp-page-btn:hover:not(:disabled) {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.cpp-page-btn:focus {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+.cpp-page-btn.cpp-page-active {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.cpp-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cpp-pagination-ellipsis {
+    padding: 10px 5px;
+    color: #646970;
+}
+
+/* ==========================================================================
+   Video Modal
+   ========================================================================== */
+
+.cpp-video-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999999;
+    display: none;
+}
+
+.cpp-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+}
+
+.cpp-modal-container {
+    position: relative;
+    width: 90%;
+    max-width: 1200px;
+    max-height: 90vh;
+    margin: 5vh auto;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.cpp-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 40px;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.cpp-modal-close:hover {
+    background: rgba(214, 54, 56, 0.9);
+    transform: scale(1.1);
+}
+
+.cpp-modal-close:focus {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.cpp-modal-content {
+    position: relative;
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.cpp-modal-content video,
+.cpp-modal-content iframe {
+    width: 100%;
+    height: auto;
+    max-height: 85vh;
+}
+
+.cpp-modal-content .spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.cpp-modal-content .cpp-error {
+    background: transparent;
+    border: none;
+    color: #fff;
+    padding: 40px;
+}
+
+/* Prevent body scroll when modal open */
+body.cpp-modal-open {
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .cpp-video-library-enhanced {
+        padding: 0 15px;
+    }
+    
+    .cpp-library-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .cpp-library-search,
+    .cpp-filter-select {
+        width: 100%;
+    }
+    
+    .cpp-video-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+    }
+    
+    .cpp-video-grid[data-columns="2"],
+    .cpp-video-grid[data-columns="4"] {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+    
+    .cpp-session-info {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    
+    .cpp-modal-container {
+        width: 95%;
+        margin: 2.5vh auto;
+        max-height: 95vh;
+    }
+    
+    .cpp-library-pagination {
+        gap: 5px;
+    }
+    
+    .cpp-page-btn {
+        padding: 8px 12px;
+        min-width: 40px;
+    }
+}
+
+@media (max-width: 480px) {
+    .cpp-video-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .cpp-video-card {
+        max-width: 100%;
+    }
+    
+    .cpp-library-locked {
+        padding: 40px 15px;
+    }
+    
+    .cpp-lock-icon {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .cpp-lock-icon .dashicons {
+        font-size: 30px;
+        width: 30px;
+        height: 30px;
+    }
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+    .cpp-video-modal,
+    .cpp-library-controls,
+    .cpp-library-pagination,
+    .cpp-session-info {
+        display: none !important;
+    }
+    
+    .cpp-video-grid {
+        display: block;
+    }
+    
+    .cpp-video-card {
+        page-break-inside: avoid;
+        margin-bottom: 20px;
+    }
+}
+
+/* ==========================================================================
+   Accessibility Enhancements
+   ========================================================================== */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .cpp-video-card {
+        border: 2px solid currentColor;
+    }
+    
+    .cpp-page-btn {
+        border-width: 3px;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .cpp-video-card,
+    .cpp-video-thumbnail img,
+    .cpp-video-play-btn,
+    .cpp-modal-close,
+    .cpp-page-btn {
+        transition: none;
+    }
+    
+    .cpp-video-card:hover {
+        transform: none;
+    }
+}
+
+/* Focus visible for keyboard navigation */
+.cpp-video-card:focus-visible,
+.cpp-page-btn:focus-visible,
+.cpp-search-btn:focus-visible {
+    outline: 3px solid #2271b1;
+    outline-offset: 3px;
+}
+
+/* Screen reader only content */
+.cpp-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+

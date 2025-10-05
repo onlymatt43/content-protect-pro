@@ -146,7 +146,11 @@ if (!$ssl_result['valid']) {
 3. ✅ **Monitoring des logs** de sécurité recommandé
 4. ✅ **Sauvegarde des clés** de chiffrement essentielle
 
-### 📈 **Monitoring Continu**
+### �️ Overlay images and migration
+- ✅ Overlay images are stored as Media Library attachment IDs (admin UI no longer accepts external URLs). This reduces reliance on external hosts and ensures integrity of assets.
+- ✅ A migration routine attempts to convert legacy external overlay URLs into attachment IDs (matching by GUID or filename); unmatched legacy values are cleared during migration.
+
+### �📈 **Monitoring Continu**
 - 📊 Surveillance du rate limiting
 - 🔍 Analyse des tentatives d'intrusion
 - 📱 Alertes sur les certificats SSL

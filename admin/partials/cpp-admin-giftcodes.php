@@ -1,5 +1,15 @@
 <?php
 /**
+ * Security check - verify user has required capability
+ */
+if (!current_user_can('manage_options')) {
+    wp_die(
+        __('You do not have sufficient permissions to access this page.', 'content-protect-pro'),
+        __('Unauthorized', 'content-protect-pro'),
+        array('response' => 403)
+    );
+}
+/**
  * Provide a admin area view for gift codes management
  *
  * @package Content_Protect_Pro
@@ -15,24 +25,24 @@ if (!defined('WPINC')) {
 $giftcode_manager = class_exists('CPP_Giftcode_Manager') ? new CPP_Giftcode_Manager() : null;
 
 // Handle actions
-$action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : '';
-$giftcode_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$action = isset(sanitize_text_field($_GET['action'] ?? '')) ? sanitize_text_field(sanitize_text_field($_GET['action'] ?? '')) : '';
+$giftcode_id = isset(sanitize_text_field($_GET['id'] ?? '')) ? intval(sanitize_text_field($_GET['id'] ?? '')) : 0;
 
-if ($giftcode_manager && isset($_POST['submit'])) {
+if ($giftcode_manager && isset(sanitize_text_field($_POST['submit'] ?? ''))) {
     if ($action === 'add' || $action === 'edit') {
         // Handle form submission
         check_admin_referer('cpp_giftcode_nonce');
         
         // Generate secure token and simple code
-        $secure_token = isset($_POST['secure_token']) && !empty($_POST['secure_token']) ? 
-            sanitize_text_field($_POST['secure_token']) : bin2hex(random_bytes(32));
-        $simple_code = isset($_POST['code']) && !empty($_POST['code']) ? 
-            sanitize_text_field($_POST['code']) : 
+        $secure_token = isset(sanitize_text_field($_POST['secure_token'] ?? '')) && !empty(sanitize_text_field($_POST['secure_token'] ?? '')) ? 
+            sanitize_text_field(sanitize_text_field($_POST['secure_token'] ?? '')) : bin2hex(random_bytes(32));
+        $simple_code = isset(sanitize_text_field($_POST['code'] ?? '')) && !empty(sanitize_text_field($_POST['code'] ?? '')) ? 
+            sanitize_text_field(sanitize_text_field($_POST['code'] ?? '')) : 
             cpp_generate_simple_code_from_token($secure_token);
         
         // Calculate duration in minutes based on unit
-        $duration_value = intval($_POST['duration_value']);
-        $duration_unit = sanitize_text_field($_POST['duration_unit']);
+        $duration_value = intval(sanitize_text_field($_POST['duration_value'] ?? ''));
+        $duration_unit = sanitize_text_field(sanitize_text_field($_POST['duration_unit'] ?? ''));
         $duration_minutes = cpp_convert_to_minutes($duration_value, $duration_unit);
         
         $code_data = array(
@@ -40,10 +50,13 @@ if ($giftcode_manager && isset($_POST['submit'])) {
             'secure_token' => $secure_token,
             'duration_minutes' => $duration_minutes,
             'duration_display' => $duration_value . ' ' . $duration_unit,
-            'expires_at' => sanitize_text_field($_POST['expires_at']),
-            'status' => sanitize_text_field($_POST['status']),
-            'description' => sanitize_textarea_field($_POST['description']),
-            'ip_restrictions' => sanitize_textarea_field($_POST['ip_restrictions'])
+            'expires_at' => sanitize_text_field(sanitize_text_field($_POST['expires_at'] ?? '')),
+            'status' => sanitize_text_field(sanitize_text_field($_POST['status'] ?? '')),
+            'description' => sanitize_textarea_field(sanitize_text_field($_POST['description'] ?? '')),
+            // Optional per-code overlay image (attachment ID only) and purchase link
+            'overlay_image' => isset(sanitize_text_field($_POST['overlay_image'] ?? '')) ? intval(sanitize_text_field($_POST['overlay_image'] ?? '')) : 0,
+            'purchase_url' => isset(sanitize_text_field($_POST['purchase_url'] ?? '')) ? esc_url_raw(sanitize_text_field($_POST['purchase_url'] ?? '')) : '',
+            'ip_restrictions' => sanitize_textarea_field(sanitize_text_field($_POST['ip_restrictions'] ?? ''))
         );
         
         if ($action === 'add') {
@@ -51,25 +64,25 @@ if ($giftcode_manager && isset($_POST['submit'])) {
             if ($result) {
                 echo '<div class="notice notice-success"><p>' . __('Gift code created successfully!', 'content-protect-pro') . '</p></div>';
             } else {
-                echo '<div class="notice notice-error"><p>' . __('Error creating gift code.', 'content-protect-pro') . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . __(__('Error creating gift code.', 'content-protect-pro'), 'content-protect-pro') . '</p></div>';
             }
         } elseif ($action === 'edit' && $giftcode_id) {
             $result = $giftcode_manager->update_code($giftcode_id, $code_data);
             if ($result) {
                 echo '<div class="notice notice-success"><p>' . __('Gift code updated successfully!', 'content-protect-pro') . '</p></div>';
             } else {
-                echo '<div class="notice notice-error"><p>' . __('Error updating gift code.', 'content-protect-pro') . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . __(__('Error updating gift code.', 'content-protect-pro'), 'content-protect-pro') . '</p></div>';
             }
         }
     }
 } elseif ($action === 'delete' && $giftcode_id && $giftcode_manager) {
     // Handle delete action
-    if (wp_verify_nonce($_GET['_wpnonce'], 'delete_giftcode_' . $giftcode_id)) {
+    if (wp_verify_nonce(sanitize_text_field($_GET['_wpnonce'] ?? ''), 'delete_giftcode_' . $giftcode_id)) {
         $result = $giftcode_manager->delete_code($giftcode_id);
         if ($result) {
             echo '<div class="notice notice-success"><p>' . __('Gift code deleted successfully!', 'content-protect-pro') . '</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>' . __('Error deleting gift code.', 'content-protect-pro') . '</p></div>';
+            echo '<div class="notice notice-error"><p>' . __(__('Error deleting gift code.', 'content-protect-pro'), 'content-protect-pro') . '</p></div>';
         }
     }
     $action = ''; // Reset to list view
@@ -100,6 +113,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
     
     <?php if ($action === 'add' || $action === 'edit'): ?>
         <!-- Add/Edit Form -->
+        <?php if (function_exists('wp_enqueue_media')) { wp_enqueue_media(); } ?>
         <form method="post" action="">
             <?php wp_nonce_field('cpp_giftcode_nonce'); ?>
             
@@ -113,7 +127,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                         <button type="button" class="button button-secondary" onclick="generateCode()">
                             <?php _e('Generate Code', 'content-protect-pro'); ?>
                         </button>
-                        <p class="description"><?php _e('Unique alphanumeric code for access validation.', 'content-protect-pro'); ?></p>
+                        <p class="description"><?php _e(__('Unique alphanumeric code for access validation.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
                 
@@ -178,7 +192,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                             <option value="used" <?php selected($edit_code ? $edit_code->status : 'active', 'used'); ?>><?php _e('Used', 'content-protect-pro'); ?></option>
                             <option value="expired" <?php selected($edit_code ? $edit_code->status : 'active', 'expired'); ?>><?php _e('Expired', 'content-protect-pro'); ?></option>
                         </select>
-                        <p class="description"><?php _e('Current status of this gift code.', 'content-protect-pro'); ?></p>
+                        <p class="description"><?php _e(__('Current status of this gift code.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
                 
@@ -188,7 +202,48 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                     </th>
                     <td>
                         <textarea id="description" name="description" rows="3" class="large-text"><?php echo $edit_code ? esc_textarea($edit_code->description) : ''; ?></textarea>
-                        <p class="description"><?php _e('Optional description or notes about this gift code.', 'content-protect-pro'); ?></p>
+                        <p class="description"><?php _e(__('Optional description or notes about this gift code.', 'content-protect-pro'), 'content-protect-pro'); ?></p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="overlay_image"><?php _e('Overlay Image (Optional)', 'content-protect-pro'); ?></label>
+                    </th>
+                    <td>
+                        <?php
+                        // Enforce attachment ID only. Show preview URL if attachment exists.
+                        $overlay_value = '';
+                        $overlay_preview = '';
+                        if ($edit_code && !empty($edit_code->overlay_image)) {
+                            if (ctype_digit((string) $edit_code->overlay_image)) {
+                                $overlay_value = intval($edit_code->overlay_image);
+                                $overlay_preview = function_exists('wp_get_attachment_url') ? wp_get_attachment_url($overlay_value) : '';
+                            } else {
+                                // Legacy non-numeric values will be migrated/cleared by migrations; don't accept here
+                                $overlay_value = '';
+                            }
+                        }
+                        ?>
+                        <!-- Store attachment ID only -->
+                        <input type="hidden" id="overlay_image" name="overlay_image" value="<?php echo esc_attr($overlay_value); ?>" />
+                        <button type="button" class="button" id="overlay_image_button"><?php _e('Upload/Select Image', 'content-protect-pro'); ?></button>
+                        <p class="description"><?php _e('Select a media library image (attachment ID will be stored). Legacy external URLs are no longer supported.', 'content-protect-pro'); ?></p>
+                        <div id="overlay_image_preview" style="margin-top:8px;">
+                            <?php if (!empty($overlay_preview)): ?>
+                                <img src="<?php echo esc_url($overlay_preview); ?>" alt="" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row">
+                        <label for="purchase_url"><?php _e('Purchase URL (Optional)', 'content-protect-pro'); ?></label>
+                    </th>
+                    <td>
+                        <input type="url" id="purchase_url" name="purchase_url" value="<?php echo $edit_code && !empty($edit_code->purchase_url) ? esc_attr($edit_code->purchase_url) : ''; ?>" class="regular-text" placeholder="https://example.com/buy" />
+                        <p class="description"><?php _e('Optional link users will be sent to when they click the overlay purchase button. Defaults to site home if empty.', 'content-protect-pro'); ?></p>
                     </td>
                 </tr>
             </table>
@@ -232,6 +287,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                             <input type="checkbox" />
                         </td>
                         <th class="manage-column column-code"><?php _e('Code', 'content-protect-pro'); ?></th>
+                        <th class="manage-column column-thumbnail"><?php _e('Thumbnail', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-duration"><?php _e('Duration', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-token"><?php _e('Token (Last 8)', 'content-protect-pro'); ?></th>
                         <th class="manage-column column-sessions"><?php _e('Active Sessions', 'content-protect-pro'); ?></th>
@@ -256,6 +312,24 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                                         </div>
                                     <?php endif; ?>
                                 </td>
+                                <td class="column-thumbnail">
+                                    <?php
+                                    $thumb_url = '';
+                                    if (!empty($code->overlay_image)) {
+                                        if (ctype_digit((string) $code->overlay_image) && function_exists('wp_get_attachment_url')) {
+                                            $thumb_url = wp_get_attachment_url(intval($code->overlay_image));
+                                        } else {
+                                            // Defensive: if legacy URL still stored, use it (migration should clear most)
+                                            $thumb_url = esc_url($code->overlay_image);
+                                        }
+                                    }
+                                    if (!empty($thumb_url)): ?>
+                                        <img src="<?php echo esc_url($thumb_url); ?>" alt="" style="max-width:80px; height:auto; border-radius:4px; border:1px solid #eee;" />
+                                    <?php else: ?>
+                                        <span class="cpp-no-thumb"></span>
+                                    <?php endif; ?>
+                                </td>
+
                                 <td class="column-duration">
                                     <?php echo esc_html($code->duration_display ?: ($code->value . ' min')); ?>
                                 </td>
@@ -328,7 +402,7 @@ if ($giftcode_manager && $action === 'edit' && $giftcode_id) {
                     <?php else: ?>
                         <tr>
                             <td colspan="8" class="no-items">
-                                <?php _e('No gift codes found.', 'content-protect-pro'); ?>
+                                <?php _e(__('No gift codes found.', 'content-protect-pro'), 'content-protect-pro'); ?>
                                 <a href="<?php echo admin_url('admin.php?page=content-protect-pro-giftcodes&action=add'); ?>">
                                     <?php _e('Create your first gift code', 'content-protect-pro'); ?>
                                 </a>
@@ -561,4 +635,40 @@ function sendBulkCodes(codes) {
         closeBulkModal();
     });
 }
+
+// Media uploader for overlay image (uses wp.media when available)
+document.addEventListener('DOMContentLoaded', function() {
+    var overlayBtn = document.getElementById('overlay_image_button');
+    if (!overlayBtn) return;
+
+    overlayBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+
+        // If wp.media is available, use the WordPress media frame
+        if (typeof wp !== 'undefined' && typeof wp.media === 'function') {
+            var frame = wp.media({
+                title: '<?php echo addslashes(__("Select Overlay Image", "content-protect-pro")); ?>',
+                button: { text: '<?php echo addslashes(__("Use Image", "content-protect-pro")); ?>' },
+                multiple: false
+            });
+
+            frame.on('select', function() {
+                var attachment = frame.state().get('selection').first().toJSON();
+                if (attachment && attachment.url) {
+                    var input = document.getElementById('overlay_image');
+                    // store the attachment id if available, else URL
+                    if (attachment.id) input.value = attachment.id; else input.value = attachment.url;
+                    var preview = document.getElementById('overlay_image_preview');
+                    preview.innerHTML = '<img src="' + attachment.url + '" alt="" style="max-width:200px; height:auto; border:1px solid #ddd; padding:4px; background:#fff;" />';
+                }
+            });
+
+            frame.open();
+            return;
+        }
+
+        // No fallback allowed: require selecting from media library (attachment ID). Show a small alert if media frame not available.
+        alert('<?php echo addslashes(__('Please use the media library to select an image. External URLs are no longer supported.', 'content-protect-pro')); ?>');
+    });
+});
 </script>
