@@ -9,6 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 import libsql_client
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import List, Optional
+from fastapi.security import APIKeyHeader
+import requests
 
 # Charger les variables d'environnement du fichier .env
 load_dotenv()
