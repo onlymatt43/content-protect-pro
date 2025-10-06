@@ -1,19 +1,17 @@
+import asyncio
+import httpx
 import os
 import sqlite3
-from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import requests
-import dotenv
-import uvicorn
 import json
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import libsql_client
 from groq import Groq
+import libsql_client
+from dotenv import load_dotenv
 
-# Load environment variables from .env file
-dotenv.load_dotenv()
+# Charger les variables d'environnement du fichier .env
+load_dotenv()
 
 # --- Débogage au démarrage : Afficher les empreintes des clés ---
 print("--- Initialisation du Gateway : Vérification des clés ---")
