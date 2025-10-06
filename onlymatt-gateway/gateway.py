@@ -139,112 +139,89 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 # --- API Endpoints ---
 
-@app.get("/settings", summary="Get WordPress Settings", dependencies=[Depends(get_api_key)])
-async def get_settings(site_id: str = "global"):
+async def get_config(site_id: str = "onlymatt"):
     """
-    Fetches and returns settings.json and clips.json from the WordPress upload directory,
-    based on the provided site_id.
+    Fetches and returns settings.json and clips.json from the WordPress upload directory.
+    This function is now more robust and handles URL construction correctly.
     """
     if not OM_CONFIG_BASE_URL:
-        raise HTTPException(status_code=500, detail="OM_CONFIG_BASE_URL is not configured in the environment.")
+        raise HTTPException(status_code=500, detail="OM_CONFIG_BASE_URL is not configured.")
 
-    settings_url = f"{OM_CONFIG_BASE_URL.rstrip('/')}/{site_id}/settings.json"
-    clips_url = f"{OM_CONFIG_BASE_URL.rstrip('/')}/{site_id}/clips.json"
+    # Construire l'URL de base pour les fichiers de configuration
+    base_url = OM_CONFIG_BASE_URL.rstrip('/')
+    
+    # Logique pour éviter les doublons dans le chemin (ex: /onlymatt/onlymatt/)
+    # Si le site_id est déjà à la fin de l'URL de base, on ne l'ajoute pas.
+    if not base_url.endswith(site_id):
+        config_url_base = f"{base_url}/{site_id}"
+    else:
+        config_url_base = base_url
 
-    try:
-        settings_resp = requests.get(settings_url)
-        settings_resp.raise_for_status()
-        settings_json = settings_resp.json()
+    settings_url = f"{config_url_base}/settings.json"
+    clips_url = f"{config_url_base}/clips.json"
+    
+    print(f"Attempting to fetch settings from: {settings_url}")
+    print(f"Attempting to fetch clips from: {clips_url}")
 
-        clips_resp = requests.get(clips_url)
-        clips_resp.raise_for_status()
-        clips_json = clips_resp.json()
+    async with httpx.AsyncClient() as client:
+        try:
+            settings_resp = await client.get(settings_url)
+            settings_resp.raise_for_status()
+            settings_json = settings_resp.json()
 
-        return {
-            "settings": settings_json,
-            "clips": clips_json
-        }
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"Configuration files not found for site_id '{site_id}' at {settings_url} or {clips_url}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch settings: {e}")
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch settings: {e}")
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse JSON from settings URLs.")
+            clips_resp = await client.get(clips_url)
+            clips_resp.raise_for_status()
+            clips_json = clips_resp.json()
 
+            return settings_json, clips_json
 
-@app.post("/history", summary="Manage Conversation History", dependencies=[Depends(get_api_key)])
-async def manage_history(session: str, action: str, message: Optional[ChatMessage] = None):
-    """
-    Read, write, or reset conversation history for a given session.
-    - action='get': Returns the history.
-    - action='add': Adds a message to the history.
-    - action='clear': Deletes the history.
-    """
-    db = await create_db_client()
-    try:
-        if action == "get":
-            result = await db.execute("SELECT role, content FROM history WHERE session = ? ORDER BY timestamp ASC", (session,))
-            history = [{"role": row[0], "content": row[1]} for row in result.rows]
-            return {"history": history}
-        elif action == "add" and message:
-            await db.execute("INSERT INTO history (session, role, content) VALUES (?, ?, ?)", (session, message.role, message.content))
-            return {"status": "message added"}
-        elif action == "clear":
-            await db.execute("DELETE FROM history WHERE session = ?", (session,))
-            return {"status": "history cleared"}
-        else:
-            raise HTTPException(status_code=400, detail="Invalid action or missing message.")
-    finally:
-        await db.close()
-
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"Configuration files not found for site_id '{site_id}' at {config_url_base}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"HTTP error fetching settings: {e}")
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=500, detail=f"Request error fetching settings: {e}")
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Failed to parse JSON from settings URLs.")
 
 @app.post("/chat", summary="Process a Chat Request", dependencies=[Depends(get_api_key)])
 async def chat(req: ChatRequest):
     """
     Main chat endpoint. Routes to the specified AI provider, manages memory, and returns the response.
     """
-    # 1. Retrieve history
+    # 1. Get config for the site
+    try:
+        settings, clips = await get_config(req.site_id)
+        # Extraire le system_prompt des paramètres chargés
+        system_prompt = settings.get("system_prompt", "You are a helpful assistant.")
+    except HTTPException as e:
+        # Si la configuration échoue, on renvoie l'erreur immédiatement
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+
+    # 2. Retrieve history
     db = await create_db_client()
     try:
         result = await db.execute(
             "SELECT role, content FROM history WHERE session = ? ORDER BY timestamp DESC LIMIT ?",
             (req.session, req.keep)
         )
-        # The history is fetched in reverse, so we need to reverse it back to chronological order
         history = [{"role": row[0], "content": row[1]} for row in reversed(result.rows)]
     finally:
         await db.close()
 
-    # 2. Combine history with new messages
-    full_conversation = history + [msg.dict() for msg in req.messages]
+    # 3. Combine system prompt, history, and new message
+    full_conversation = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": req.message}]
     
-    # 3. Store user message in history
+    # 4. Store user message in history
     db = await create_db_client()
     try:
-        for msg in req.messages:
-             await db.execute("INSERT INTO history (session, role, content) VALUES (?, ?, ?)", (req.session, msg.role, msg.content))
+        await db.execute("INSERT INTO history (session, role, content) VALUES (?, ?, ?)", (req.session, "user", req.message))
     finally:
         await db.close()
 
-    # 4. Route to provider
+    # 5. Route to provider
     ai_reply_content = ""
-    if req.provider == "ollama":
-        try:
-            response = requests.post(
-                f"{OLLAMA_HOST}/api/chat",
-                json={"model": req.model, "messages": full_conversation, "stream": False},
-                timeout=120
-            )
-            response.raise_for_status()
-            ai_reply_data = response.json()
-            ai_reply_content = ai_reply_data.get("message", {}).get("content", "")
-
-        except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=502, detail=f"Error contacting Ollama: {e}")
-    
-    elif req.provider == "grok":
+    if req.provider == "grok":
         if not GROK_API_KEY:
             raise HTTPException(status_code=500, detail="GROK_API_KEY is not configured.")
         try:
@@ -256,11 +233,10 @@ async def chat(req: ChatRequest):
             ai_reply_content = chat_completion.choices[0].message.content
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Error contacting Groq: {e}")
-
     else:
         raise HTTPException(status_code=400, detail=f"Provider '{req.provider}' not supported.")
 
-    # 5. Store AI response in history
+    # 6. Store AI response in history
     if ai_reply_content:
         db = await create_db_client()
         try:
@@ -268,7 +244,7 @@ async def chat(req: ChatRequest):
         finally:
             await db.close()
 
-    # 6. Return response
+    # 7. Return response
     return {"reply": ai_reply_content}
 
 if __name__ == "__main__":
