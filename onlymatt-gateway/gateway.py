@@ -31,6 +31,30 @@ for key in keys_to_check:
 print("----------------------------------------------------")
 # --- Fin du débogage ---
 
+
+# Création de l'application FastAPI
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Ensure the database and table exist on startup.
+    """
+    print("--- Exécution de l'événement de démarrage : Vérification de la base de données ---")
+    try:
+        async with create_db_client() as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_history (
+                    session_id TEXT,
+                    role TEXT,
+                    content TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        print("--- Vérification de la base de données terminée avec succès ---")
+    except Exception as e:
+        print(f"!!! ERREUR lors de l'initialisation de la base de données : {e} !!!")
+
 # --- Configuration ---
 OM_API_KEY = os.getenv("OM_API_KEY")
 OM_CONFIG_BASE_URL = os.getenv("OM_CONFIG_BASE_URL")
@@ -38,13 +62,6 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST")
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
-
-# --- FastAPI App Initialization ---
-app = FastAPI(
-    title="OnlyMatt Gateway",
-    description="Centralized AI gateway for chat, memory, and settings.",
-    version="1.0.0"
-)
 
 # --- CORS Middleware ---
 # Allow all subdomains of onlymatt.ca, plus localhost for development
