@@ -1,0 +1,22 @@
+# Fichier .env - Ne jamais partager les secrets !
+.env
+
+# Environnement virtuel Python
+.venv/
+venv/
+*.venv
+
+# Fichiers de base de données SQLite locaux
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Dossiers de cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Fichiers système macOS
+.DS_Store

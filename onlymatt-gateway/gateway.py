@@ -15,6 +15,19 @@ from groq import Groq
 # Load environment variables from .env file
 dotenv.load_dotenv()
 
+# --- Débogage au démarrage : Afficher les empreintes des clés ---
+print("--- Initialisation du Gateway : Vérification des clés ---")
+keys_to_check = ["GROK_API_KEY", "TURSO_AUTH_TOKEN", "TURSO_DATABASE_URL", "OM_API_KEY", "OM_CONFIG_BASE_URL"]
+for key in keys_to_check:
+    value = os.getenv(key)
+    if value:
+        # Affiche le nom de la clé, les 4 premiers et les 4 derniers caractères
+        print(f"{key}: {value[:4]}...{value[-4:]}")
+    else:
+        print(f"{key}: NON TROUVÉE !")
+print("----------------------------------------------------")
+# --- Fin du débogage ---
+
 # --- Configuration ---
 OM_API_KEY = os.getenv("OM_API_KEY")
 OM_CONFIG_BASE_URL = os.getenv("OM_CONFIG_BASE_URL")
