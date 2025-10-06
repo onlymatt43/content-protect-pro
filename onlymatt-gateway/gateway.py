@@ -3,7 +3,7 @@ import httpx
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.security import APIKeyHeader
 import requests
+import uvicorn
 
 # Charger les variables d'environnement du fichier .env
 load_dotenv()
